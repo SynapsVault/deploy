@@ -1,0 +1,15 @@
+{
+  "name": "atriumind-deploy",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "AtriumMind deployment scripts and SCF submission docs",
+  "scripts": {
+    "step1": "node scripts/01-generate-keypairs.js",
+    "step2": "node scripts/02-fund-accounts.js",
+    "step5": "node scripts/05-seed-catalog.js",
+    "step6": "node scripts/06-smoke-test.js"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "^13.1.0"
+  }
+}
