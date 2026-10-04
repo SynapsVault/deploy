@@ -1,15 +1,15 @@
-# AtriumMind — SCF Build Award Submission
+# SynapsVault — SCF Build Award Submission
 ## Stellar Community Fund v7
 
 ---
 
 ## 1. Project Overview
 
-**Project name:** AtriumMind  
+**Project name:** SynapsVault  
 **Tagline:** A decentralised marketplace where creators sell paywalled digital resources — paid instantly with Stellar USDC, access enforced by Soroban smart contracts.
 
 **One paragraph:**
-AtriumMind is an open marketplace where anyone can publish APIs, datasets, research documents, and AI prompts behind a micropayment wall — and anyone can buy them with one click using their Stellar Freighter wallet. Payment is settled in USDC via the x402 HTTP payment protocol. Access rights are recorded on-chain via three Soroban smart contracts (vault-registry, access-lease, subscription), so any third party can verify a buyer's access without trusting AtriumMind's backend. The platform targets AI developers, researchers, and data publishers who want to monetise their work without a traditional SaaS setup.
+SynapsVault is an open marketplace where anyone can publish APIs, datasets, research documents, and AI prompts behind a micropayment wall — and anyone can buy them with one click using their Stellar Freighter wallet. Payment is settled in USDC via the x402 HTTP payment protocol. Access rights are recorded on-chain via three Soroban smart contracts (vault-registry, access-lease, subscription), so any third party can verify a buyer's access without trusting SynapsVault's backend. The platform targets AI developers, researchers, and data publishers who want to monetise their work without a traditional SaaS setup.
 
 ---
 
@@ -27,7 +27,7 @@ For buyers, there is no standardised way to pay for a resource and get access im
 
 ## 3. Solution + Stellar Integration
 
-AtriumMind uses Stellar as the **core settlement and access-control layer** — not an afterthought.
+SynapsVault uses Stellar as the **core settlement and access-control layer** — not an afterthought.
 
 | Feature | Stellar component used |
 |---------|----------------------|
@@ -56,15 +56,15 @@ AtriumMind uses Stellar as the **core settlement and access-control layer** — 
 | access-lease | `CDQZBCEPN6RCJAQLEKB3ZRNLUZXDCCFMVIS6STZNAOEAQLXD3FUBNQGX` | [View](https://stellar.expert/explorer/testnet/contract/CDQZBCEPN6RCJAQLEKB3ZRNLUZXDCCFMVIS6STZNAOEAQLXD3FUBNQGX) |
 | subscription | `CCCE6Q6WHDICGMQWXXXMM6X7YDGK3BXU4JNQJNSIA6XQRC52MQL42CD6` | [View](https://stellar.expert/explorer/testnet/contract/CCCE6Q6WHDICGMQWXXXMM6X7YDGK3BXU4JNQJNSIA6XQRC52MQL42CD6) |
 
-Deployed via GitHub Actions CI: [view workflow run](https://github.com/bolu26/AtriumMind-contracts/actions)
+Deployed via GitHub Actions CI: [view workflow run](https://github.com/SynapsVault/SynapsVault-contracts/actions)
 
 ### GitHub Repositories ✅
 
 | Repo | URL | CI Status |
 |------|-----|-----------|
-| AtriumMind-frontend | https://github.com/bolu26/AtriumMind-frontend | [![CI](https://github.com/bolu26/AtriumMind-frontend/actions/workflows/ci.yml/badge.svg)](https://github.com/bolu26/AtriumMind-frontend/actions) |
-| AtriumMind-backend | https://github.com/bolu26/AtriumMind-backend | [![CI](https://github.com/bolu26/AtriumMind-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/bolu26/AtriumMind-backend/actions) |
-| AtriumMind-contracts | https://github.com/bolu26/AtriumMind-contracts | [![Deploy](https://github.com/bolu26/AtriumMind-contracts/actions/workflows/testnet-deploy.yml/badge.svg)](https://github.com/bolu26/AtriumMind-contracts/actions) |
+| SynapsVault-frontend | https://github.com/SynapsVault/SynapsVault-frontend | [![CI](https://github.com/SynapsVault/SynapsVault-frontend/actions/workflows/ci.yml/badge.svg)](https://github.com/SynapsVault/SynapsVault-frontend/actions) |
+| SynapsVault-backend | https://github.com/SynapsVault/SynapsVault-backend | [![CI](https://github.com/SynapsVault/SynapsVault-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/SynapsVault/SynapsVault-backend/actions) |
+| SynapsVault-contracts | https://github.com/SynapsVault/SynapsVault-contracts | [![Deploy](https://github.com/SynapsVault/SynapsVault-contracts/actions/workflows/testnet-deploy.yml/badge.svg)](https://github.com/SynapsVault/SynapsVault-contracts/actions) |
 
 ### Backend (in progress)
 - Build: ✅ TypeScript compiles successfully
@@ -81,7 +81,7 @@ Browser (React + Vite)
   │  Stellar Freighter wallet
   │  @x402/fetch — wraps HTTP with USDC payment headers
   ▼
-AtriumMind Backend (Express + TypeScript)
+SynapsVault Backend (Express + TypeScript)
   │  POST /resources    — publish resource
   │  GET  /resources    — browse catalog
   │  GET  /resources/:id — x402 paywall → verifies payment → delivers content
@@ -166,7 +166,7 @@ AtriumMind Backend (Express + TypeScript)
 - Full-stack developer + designer, Lagos, Nigeria
 - 3+ years building Web2 SaaS products
 - GitHub: https://github.com/bolu26
-- Built all 3 AtriumMind repos end-to-end
+- Built all 3 SynapsVault repos end-to-end
 
 *Seeking a Soroban/Rust co-developer for M2–M3.*
 
@@ -186,14 +186,14 @@ AtriumMind Backend (Express + TypeScript)
 
 | Resource | URL |
 |---|---|
-| GitHub — Frontend | https://github.com/bolu26/AtriumMind-frontend |
-| GitHub — Backend | https://github.com/bolu26/AtriumMind-backend |
-| GitHub — Contracts | https://github.com/bolu26/AtriumMind-contracts |
-| Deployed contracts | https://github.com/bolu26/AtriumMind-contracts/blob/main/deployed/contract-ids.env |
+| GitHub — Frontend | https://github.com/SynapsVault/SynapsVault-frontend |
+| GitHub — Backend | https://github.com/SynapsVault/SynapsVault-backend |
+| GitHub — Contracts | https://github.com/SynapsVault/SynapsVault-contracts |
+| Deployed contracts | https://github.com/SynapsVault/SynapsVault-contracts/blob/main/deployed/contract-ids.env |
 | vault-registry on testnet | https://stellar.expert/explorer/testnet/contract/CBQEIMSRPSRKJJHGOELZTP3CISZVHZ6WPKZTWJMYZXHFXPGHHWFQBD4H |
 | access-lease on testnet | https://stellar.expert/explorer/testnet/contract/CDQZBCEPN6RCJAQLEKB3ZRNLUZXDCCFMVIS6STZNAOEAQLXD3FUBNQGX |
 | subscription on testnet | https://stellar.expert/explorer/testnet/contract/CCCE6Q6WHDICGMQWXXXMM6X7YDGK3BXU4JNQJNSIA6XQRC52MQL42CD6 |
-| Deploy workflow | https://github.com/bolu26/AtriumMind-contracts/actions/workflows/testnet-deploy.yml |
+| Deploy workflow | https://github.com/SynapsVault/SynapsVault-contracts/actions/workflows/testnet-deploy.yml |
 | Demo video | [to be recorded — see checklist below] |
 
 ---

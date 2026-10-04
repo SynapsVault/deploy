@@ -1,4 +1,4 @@
-# AtriumMind — Deployment Runbook
+# SynapsVault — Deployment Runbook
 
 Complete step-by-step guide to go from zero to a live testnet deployment
 ready for SCF Build Award submission.
@@ -52,7 +52,7 @@ npm install -g @railway/cli
 ### Step 1 — Generate keypairs
 
 ```bash
-cd AtriumMind-contracts   # or the deploy folder
+cd SynapsVault-contracts   # or the deploy folder
 node scripts/01-generate-keypairs.js
 ```
 
@@ -131,7 +131,7 @@ All 6 checks should pass. Fix any failures before submitting.
 ### Step 10 — Record demo video
 
 SCF requires a 3–5 minute demo video. Record:
-1. Show the live URL (https://atriumind.vercel.app)
+1. Show the live URL (https://synapsvault.vercel.app)
 2. Connect Freighter wallet
 3. Browse the catalog — show 3 real resources
 4. Click "Buy" on one resource — approve the USDC payment
@@ -148,8 +148,8 @@ Upload to YouTube (unlisted) and paste the URL in the SCF submission form.
 
 In `docs/SCF-submission.md`, replace these placeholders:
 - `C[CONTRACT_ID]` with your actual contract IDs from `contract-ids.env`
-- `https://atriumind-backend.up.railway.app` with your actual Railway URL
-- `https://atriumind.vercel.app` with your actual Vercel URL
+- `https://synapsvault-backend.up.railway.app` with your actual Railway URL
+- `https://synapsvault.vercel.app` with your actual Vercel URL
 - Add the demo video URL in Section 12
 
 Then submit the interest form at: https://communityfund.stellar.org/awards

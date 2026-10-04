@@ -1,11 +1,11 @@
-# Deploy AtriumMind Backend to Railway (Free Tier)
+# Deploy SynapsVault Backend to Railway (Free Tier)
 
 Railway gives you a free $5/month credit — enough to run the backend 24/7 for testnet demos.
 
 ## 1. Prerequisites
 
 - Railway account at [railway.app](https://railway.app) (GitHub login)
-- `AtriumMind-backend` pushed to `github.com/bolu26/AtriumMind-backend` ✅ (already done)
+- `SynapsVault-backend` pushed to `github.com/SynapsVault/SynapsVault-backend` ✅ (already done)
 - Supabase project for the database (free tier at [supabase.com](https://supabase.com))
 
 ---
@@ -13,7 +13,7 @@ Railway gives you a free $5/month credit — enough to run the backend 24/7 for 
 ## 2. Set up Supabase (database)
 
 1. Go to [supabase.com](https://supabase.com) → New project
-2. Name it `atriumind-testnet`, choose any region
+2. Name it `synapsvault-testnet`, choose any region
 3. Copy the **Connection string** (Settings → Database → Connection string → URI mode)
    - Format: `postgres://postgres:[password]@db.[ref].supabase.co:5432/postgres`
 4. Copy the **Service Role Key** (Settings → API → `service_role`)
@@ -25,10 +25,10 @@ Railway gives you a free $5/month credit — enough to run the backend 24/7 for 
 ### Option A — Railway Dashboard (easiest)
 
 1. [railway.app/new](https://railway.app/new) → **Deploy from GitHub repo**
-2. Choose `bolu26/AtriumMind-backend`
+2. Choose `bolu26/SynapsVault-backend`
 3. Railway auto-detects the `Dockerfile` and builds it
 4. Go to **Settings → Domains** → **Generate Domain**
-   - You'll get a URL like `atriumind-backend-production.up.railway.app`
+   - You'll get a URL like `synapsvault-backend-production.up.railway.app`
 
 ### Option B — Railway CLI
 

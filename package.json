@@ -1,8 +1,8 @@
 {
-  "name": "atriumind-deploy",
+  "name": "synapsvault-deploy",
   "version": "1.0.0",
   "type": "module",
-  "description": "AtriumMind deployment scripts and SCF submission docs",
+  "description": "SynapsVault deployment scripts and SCF submission docs",
   "scripts": {
     "step1": "node scripts/01-generate-keypairs.js",
     "step2": "node scripts/02-fund-accounts.js",

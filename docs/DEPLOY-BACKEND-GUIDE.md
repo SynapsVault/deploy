@@ -1,4 +1,4 @@
-# AtriumMind Backend — Full Deployment Guide
+# SynapsVault Backend — Full Deployment Guide
 ## Supabase + Railway (both free tier, ~20 minutes total)
 
 ---
@@ -27,7 +27,7 @@
 
 1. Click **New project**
 2. Fill in:
-   - **Name:** `atriumind-testnet`
+   - **Name:** `synapsvault-testnet`
    - **Database Password:** choose a strong password — **write it down, you'll need it**
    - **Region:** choose the one closest to you (Lagos → `eu-west-2` London or `us-east-1`)
 3. Click **Create new project**
@@ -98,7 +98,7 @@ It looks like: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSJ...`
 1. From the Railway dashboard click **New Project**
 2. Select **Deploy from GitHub repo**
 3. If this is your first time, click **Configure GitHub App** and give Railway access to your repositories
-4. Search for and select **`bolu26/AtriumMind-backend`**
+4. Search for and select **`bolu26/SynapsVault-backend`**
 5. Click **Deploy Now**
 
 Railway will start building automatically using the `Dockerfile` in the repo.
@@ -117,7 +117,7 @@ Railway will start building automatically using the `Dockerfile` in the repo.
 
 ### Step 2.4 — Set environment variables
 
-This is the most important step. Click on your **AtriumMind-backend** service (the box in the project), then click the **Variables** tab.
+This is the most important step. Click on your **SynapsVault-backend** service (the box in the project), then click the **Variables** tab.
 
 Add each variable below. Click **+ New Variable** for each one.
 
@@ -141,7 +141,7 @@ Add each variable below. Click **+ New Variable** for each one.
 | `VAULT_REGISTRY_CONTRACT_ID` | `CBQEIMSRPSRKJJHGOELZTP3CISZVHZ6WPKZTWJMYZXHFXPGHHWFQBD4H` | Deployed contract |
 | `REGISTRY_CONTRACT_ID` | `CBQEIMSRPSRKJJHGOELZTP3CISZVHZ6WPKZTWJMYZXHFXPGHHWFQBD4H` | Same as above |
 | `OPENROUTER_API_KEY` | Get a free key at [openrouter.ai](https://openrouter.ai) | Free tier available |
-| `ADMIN_API_KEY` | `atrium-admin-2025-xK9mP3nQ8rL2vB7s` | Keep this secret |
+| `ADMIN_API_KEY` | `synapse-admin-2025-xK9mP3nQ8rL2vB7s` | Keep this secret |
 
 ---
 
@@ -174,7 +174,7 @@ REGISTRY_SECRET_KEY=SD52YGCD2IS7BS7ULV5VKGHXIJAJUMQJV6M3M34Z2GNAPSYBDUQHCOLX
 VAULT_REGISTRY_CONTRACT_ID=CBQEIMSRPSRKJJHGOELZTP3CISZVHZ6WPKZTWJMYZXHFXPGHHWFQBD4H
 REGISTRY_CONTRACT_ID=CBQEIMSRPSRKJJHGOELZTP3CISZVHZ6WPKZTWJMYZXHFXPGHHWFQBD4H
 OPENROUTER_API_KEY=sk-or-...   ← FILL IN (get free at openrouter.ai)
-ADMIN_API_KEY=atrium-admin-2025-xK9mP3nQ8rL2vB7s
+ADMIN_API_KEY=synapse-admin-2025-xK9mP3nQ8rL2vB7s
 NODE_ENV=production
 PORT=3000
 FACILITATOR_URL=https://www.x402.org/facilitator
@@ -188,7 +188,7 @@ After adding all variables, Railway will **automatically redeploy**.
 
 The database is empty. You need to apply the schema.
 
-1. Click on your **AtriumMind-backend** service
+1. Click on your **SynapsVault-backend** service
 2. Click the **Settings** tab
 3. Scroll to **Deploy** → find **Custom Start Command** — leave it as is (uses Dockerfile CMD)
 4. Now open the **Shell** tab (or click the terminal icon)
@@ -217,7 +217,7 @@ echo "All migrations done"
 
 1. Click on your service
 2. Click the **Settings** tab → **Networking** → **Generate Domain**
-3. Railway gives you a URL like: `atriumind-backend-production.up.railway.app`
+3. Railway gives you a URL like: `synapsvault-backend-production.up.railway.app`
 4. **Save this** — you'll need it for the frontend
 
 ---
@@ -235,7 +235,7 @@ https://your-app.up.railway.app/resources
 
 # Admin stats — needs header
 curl https://your-app.up.railway.app/admin/stats \
-  -H "X-Admin-Key: atrium-admin-2025-xK9mP3nQ8rL2vB7s"
+  -H "X-Admin-Key: synapse-admin-2025-xK9mP3nQ8rL2vB7s"
 ```
 
 If `/health` returns `{"status":"ok"}` — your backend is live. ✅
@@ -252,8 +252,8 @@ Now add the 3 real resources to the catalog.
 curl -X POST https://your-app.up.railway.app/publishers \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "AtriumMind Research Lab",
-    "email": "research@atriumind.demo",
+    "name": "SynapsVault Research Lab",
+    "email": "research@synapsvault.demo",
     "walletAddress": "GDEJJLXV2CNHF5HEGX34MU4G6L4PRVUAGD4ANF77ZDYTQJKSDSDYVVI6"
   }'
 ```
@@ -268,8 +268,8 @@ Copy the `apiKey` from the response. It looks like `ak_...`. **Save it.**
 curl -X POST https://your-app.up.railway.app/publishers \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "AtriumMind Data Studio",
-    "email": "data@atriumind.demo",
+    "name": "SynapsVault Data Studio",
+    "email": "data@synapsvault.demo",
     "walletAddress": "GBXL7OEOSVNSESHD7Q2BYVVA2KPQLSSIRLDSY6HFNYPXHCEBKPNCJQKX"
   }'
 ```
@@ -333,7 +333,7 @@ You should see 3 resources in the response. ✅
 
 ### Step 4.1 — Go to your Vercel project
 
-1. Go to **[vercel.com](https://vercel.com)** → your AtriumMind-frontend project
+1. Go to **[vercel.com](https://vercel.com)** → your SynapsVault-frontend project
 2. Click **Settings** → **Environment Variables**
 
 ### Step 4.2 — Update VITE_API_URL
@@ -360,7 +360,7 @@ Run these to confirm everything works end-to-end:
 
 ```bash
 BACKEND="https://your-app.up.railway.app"
-ADMIN_KEY="atrium-admin-2025-xK9mP3nQ8rL2vB7s"
+ADMIN_KEY="synapse-admin-2025-xK9mP3nQ8rL2vB7s"
 
 echo "1. Health check"
 curl -s $BACKEND/health | python3 -m json.tool
@@ -426,4 +426,4 @@ subscription:   CCCE6Q6WHDICGMQWXXXMM6X7YDGK3BXU4JNQJNSIA6XQRC52MQL42CD6
 
 ---
 
-*If you get stuck on any step, open an issue at https://github.com/bolu26/AtriumMind-backend/issues*
+*If you get stuck on any step, open an issue at https://github.com/SynapsVault/SynapsVault-backend/issues*

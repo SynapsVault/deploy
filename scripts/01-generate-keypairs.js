@@ -1,5 +1,5 @@
 /**
- * AtriumMind — Step 1: Generate Keypairs
+ * SynapsVault — Step 1: Generate Keypairs
  * Run ONCE locally. Save output in a password manager.
  *
  * Usage:
@@ -22,7 +22,7 @@ const wallets = [
 ];
 
 console.log("\n╔══════════════════════════════════════════════════════╗");
-console.log("║   AtriumMind Testnet Keypairs — SAVE THESE NOW      ║");
+console.log("║   SynapsVault Testnet Keypairs — SAVE THESE NOW      ║");
 console.log("╚══════════════════════════════════════════════════════╝\n");
 
 for (const w of wallets) {

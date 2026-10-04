@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AtriumMind — Step 4: Initialise all deployed contracts
+# SynapsVault — Step 4: Initialise all deployed contracts
 #
 # Prerequisites:
 #   source contract-ids.env      (sets vault_registry, access_lease, subscription)

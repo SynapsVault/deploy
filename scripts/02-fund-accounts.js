@@ -1,5 +1,5 @@
 /**
- * AtriumMind — Step 2: Fund testnet accounts via Friendbot
+ * SynapsVault — Step 2: Fund testnet accounts via Friendbot
  *
  * Usage:
  *   node scripts/02-fund-accounts.js G... G... G...

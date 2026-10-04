@@ -1,4 +1,4 @@
-# Deploy AtriumMind Contracts to Stellar Testnet
+# Deploy SynapsVault Contracts to Stellar Testnet
 
 Run these steps **once locally** from your machine. Takes ~20 minutes total.
 
@@ -25,8 +25,8 @@ soroban --version
 ## Step 1 — Generate keypairs
 
 ```bash
-cd AtriumMind-contracts  # or wherever you cloned
-node ../atriumind-deploy/scripts/01-generate-keypairs.js
+cd SynapsVault-contracts  # or wherever you cloned
+node ../synapsvault-deploy/scripts/01-generate-keypairs.js
 ```
 
 Save all 5 keypairs in a password manager. You need:
@@ -40,7 +40,7 @@ Save all 5 keypairs in a password manager. You need:
 ## Step 2 — Fund all accounts
 
 ```bash
-node ../atriumind-deploy/scripts/02-fund-accounts.js \
+node ../synapsvault-deploy/scripts/02-fund-accounts.js \
   GDEPLOYER... GBACKEND... GPUBLISHER1... GPUBLISHER2... GBUYER1...
 ```
 
@@ -55,7 +55,7 @@ Check balances at: https://stellar.expert/explorer/testnet
 ```bash
 export DEPLOYER_SECRET=Syour_deployer_secret_key_here
 
-bash ../atriumind-deploy/scripts/03-deploy-contracts.sh
+bash ../synapsvault-deploy/scripts/03-deploy-contracts.sh
 ```
 
 This will:
@@ -90,7 +90,7 @@ source contract-ids.env
 export DEPLOYER_SECRET=Syour_deployer_secret_key_here
 export BACKEND_PUBLIC=Gyour_backend_wallet_public_key
 
-bash ../atriumind-deploy/scripts/04-init-contracts.sh
+bash ../synapsvault-deploy/scripts/04-init-contracts.sh
 ```
 
 This calls `init(admin)` on `access-lease` and `subscription`, setting your backend

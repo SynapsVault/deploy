@@ -1,5 +1,5 @@
 /**
- * AtriumMind — Step 6: End-to-end smoke test
+ * SynapsVault — Step 6: End-to-end smoke test
  *
  * Checks every critical path before submitting to SCF:
  *   ✓ Backend health
@@ -37,7 +37,7 @@ async function get(path, headers = {}) {
   return res.json();
 }
 
-console.log(`\n▸ AtriumMind smoke test — ${BASE}\n`);
+console.log(`\n▸ SynapsVault smoke test — ${BASE}\n`);
 
 // Health
 await check("Backend health", async () => {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AtriumMind — Step 3: Build + Deploy all 3 Soroban contracts to Stellar testnet
+# SynapsVault — Step 3: Build + Deploy all 3 Soroban contracts to Stellar testnet
 #
 # Prerequisites:
 #   - Rust + wasm32 target:  rustup target add wasm32-unknown-unknown
@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-CONTRACTS_DIR="$(cd "$(dirname "$0")/../AtriumMind-contracts" && pwd)"
+CONTRACTS_DIR="$(cd "$(dirname "$0")/../SynapsVault-contracts" && pwd)"
 OUT_FILE="$(dirname "$0")/../contract-ids.env"
 
 if [[ -z "${DEPLOYER_SECRET:-}" ]]; then

@@ -1,5 +1,5 @@
 /**
- * AtriumMind — Step 5: Seed the catalog with 3 real resources
+ * SynapsVault — Step 5: Seed the catalog with 3 real resources
  *
  * This script:
  *   1. Creates 2 publisher accounts via the backend API
@@ -21,13 +21,13 @@ const BASE = process.env.BACKEND_URL ?? "http://localhost:3000";
 // Each has a real, publicly accessible URL so the x402 paywall demo is genuine.
 const PUBLISHERS = [
   {
-    name:          "AtriumMind Research Lab",
-    email:         "research@atriumind.demo",
+    name:          "SynapsVault Research Lab",
+    email:         "research@synapsvault.demo",
     walletAddress: process.env.PUBLISHER1_PUBLIC ?? "GCKIQDFNL4XFUCYVTPXPJQ4B5EQMUMHZXG3IQMPNHILGQBXQNQ4OQQL",
   },
   {
-    name:          "AtriumMind Data Studio",
-    email:         "data@atriumind.demo",
+    name:          "SynapsVault Data Studio",
+    email:         "data@synapsvault.demo",
     walletAddress: process.env.PUBLISHER2_PUBLIC ?? "GDMRXXCJGU7BPQZLULXUIFXKDKWKNZZN2YQJM7SQGFHFQFBUFZXRRCXP",
   },
 ];
@@ -86,7 +86,7 @@ async function get(path) {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-console.log(`\n▸ Seeding AtriumMind catalog at ${BASE}\n`);
+console.log(`\n▸ Seeding SynapsVault catalog at ${BASE}\n`);
 
 const apiKeys = [];
 
