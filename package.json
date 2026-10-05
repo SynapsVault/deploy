@@ -1,15 +1,31 @@
 {
   "name": "synapsvault-deploy",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "SynapsVault deployment scripts and SCF submission docs",
   "scripts": {
     "step1": "node scripts/01-generate-keypairs.js",
     "step2": "node scripts/02-fund-accounts.js",
+    "step3": "bash scripts/03-deploy-contracts.sh",
+    "step4": "bash scripts/04-init-contracts.sh",
     "step5": "node scripts/05-seed-catalog.js",
-    "step6": "node scripts/06-smoke-test.js"
+    "step6": "node scripts/06-smoke-test.js",
+    "deploy": "npm run step1 && npm run step2 && npm run step3 && npm run step4",
+    "test:smoke": "node scripts/06-smoke-test.js"
+  },
+  "keywords": [
+    "stellar",
+    "soroban",
+    "deployment",
+    "testnet",
+    "x402"
+  ],
+  "author": "SynapsVault Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
   },
   "dependencies": {
-    "@stellar/stellar-sdk": "^13.1.0"
+    "@stellar/stellar-sdk": "^17.2.1"
   }
 }

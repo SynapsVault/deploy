@@ -1,16 +1,28 @@
 /**
  * SynapsVault — Step 1: Generate Keypairs
- * Run ONCE locally. Save output in a password manager.
+ *
+ * Generates 5 Stellar keypairs for testnet deployment:
+ * - DEPLOYER: Contract deployment authority
+ * - BACKEND: Platform wallet for signing transactions
+ * - PUBLISHER1/2: Test publisher accounts
+ * - BUYER1: Test buyer account
+ *
+ * ⚠️  IMPORTANT: Save output in a password manager immediately!
+ * Store securely—never commit to git.
  *
  * Usage:
- *   npm install @stellar/stellar-sdk
  *   node scripts/01-generate-keypairs.js
  */
 import { Keypair } from "@stellar/stellar-sdk";
 
 function gen(label) {
-  const kp = Keypair.random();
-  return { label, pub: kp.publicKey(), sec: kp.secret() };
+  try {
+    const kp = Keypair.random();
+    return { label, pub: kp.publicKey(), sec: kp.secret() };
+  } catch (error) {
+    console.error(`❌ Error generating keypair: ${error.message}`);
+    process.exit(1);
+  }
 }
 
 const wallets = [
