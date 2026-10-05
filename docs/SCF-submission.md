@@ -56,15 +56,15 @@ SynapsVault uses Stellar as the **core settlement and access-control layer** —
 | access-lease | `CDQZBCEPN6RCJAQLEKB3ZRNLUZXDCCFMVIS6STZNAOEAQLXD3FUBNQGX` | [View](https://stellar.expert/explorer/testnet/contract/CDQZBCEPN6RCJAQLEKB3ZRNLUZXDCCFMVIS6STZNAOEAQLXD3FUBNQGX) |
 | subscription | `CCCE6Q6WHDICGMQWXXXMM6X7YDGK3BXU4JNQJNSIA6XQRC52MQL42CD6` | [View](https://stellar.expert/explorer/testnet/contract/CCCE6Q6WHDICGMQWXXXMM6X7YDGK3BXU4JNQJNSIA6XQRC52MQL42CD6) |
 
-Deployed via GitHub Actions CI: [view workflow run](https://github.com/SynapsVault/SynapsVault-contracts/actions)
+Deployed via GitHub Actions CI: [view workflow run](https://github.com/SynapsVault/contracts/actions)
 
 ### GitHub Repositories ✅
 
 | Repo | URL | CI Status |
 |------|-----|-----------|
-| SynapsVault-frontend | https://github.com/SynapsVault/SynapsVault-frontend | [![CI](https://github.com/SynapsVault/SynapsVault-frontend/actions/workflows/ci.yml/badge.svg)](https://github.com/SynapsVault/SynapsVault-frontend/actions) |
-| SynapsVault-backend | https://github.com/SynapsVault/SynapsVault-backend | [![CI](https://github.com/SynapsVault/SynapsVault-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/SynapsVault/SynapsVault-backend/actions) |
-| SynapsVault-contracts | https://github.com/SynapsVault/SynapsVault-contracts | [![Deploy](https://github.com/SynapsVault/SynapsVault-contracts/actions/workflows/testnet-deploy.yml/badge.svg)](https://github.com/SynapsVault/SynapsVault-contracts/actions) |
+| SynapsVault-frontend | https://github.com/SynapsVault/frontend | [![CI](https://github.com/SynapsVault/frontend/actions/workflows/ci.yml/badge.svg)](https://github.com/SynapsVault/frontend/actions) |
+| SynapsVault-backend | https://github.com/SynapsVault/backend | [![CI](https://github.com/SynapsVault/backend/actions/workflows/ci.yml/badge.svg)](https://github.com/SynapsVault/backend/actions) |
+| SynapsVault-contracts | https://github.com/SynapsVault/contracts | [![Deploy](https://github.com/SynapsVault/contracts/actions/workflows/testnet-deploy.yml/badge.svg)](https://github.com/SynapsVault/contracts/actions) |
 
 ### Backend (in progress)
 - Build: ✅ TypeScript compiles successfully
@@ -186,14 +186,14 @@ SynapsVault Backend (Express + TypeScript)
 
 | Resource | URL |
 |---|---|
-| GitHub — Frontend | https://github.com/SynapsVault/SynapsVault-frontend |
-| GitHub — Backend | https://github.com/SynapsVault/SynapsVault-backend |
-| GitHub — Contracts | https://github.com/SynapsVault/SynapsVault-contracts |
-| Deployed contracts | https://github.com/SynapsVault/SynapsVault-contracts/blob/main/deployed/contract-ids.env |
+| GitHub — Frontend | https://github.com/SynapsVault/frontend |
+| GitHub — Backend | https://github.com/SynapsVault/backend |
+| GitHub — Contracts | https://github.com/SynapsVault/contracts |
+| Deployed contracts | https://github.com/SynapsVault/contracts/blob/main/deployed/contract-ids.env |
 | vault-registry on testnet | https://stellar.expert/explorer/testnet/contract/CBQEIMSRPSRKJJHGOELZTP3CISZVHZ6WPKZTWJMYZXHFXPGHHWFQBD4H |
 | access-lease on testnet | https://stellar.expert/explorer/testnet/contract/CDQZBCEPN6RCJAQLEKB3ZRNLUZXDCCFMVIS6STZNAOEAQLXD3FUBNQGX |
 | subscription on testnet | https://stellar.expert/explorer/testnet/contract/CCCE6Q6WHDICGMQWXXXMM6X7YDGK3BXU4JNQJNSIA6XQRC52MQL42CD6 |
-| Deploy workflow | https://github.com/SynapsVault/SynapsVault-contracts/actions/workflows/testnet-deploy.yml |
+| Deploy workflow | https://github.com/SynapsVault/contracts/actions/workflows/testnet-deploy.yml |
 | Demo video | [to be recorded — see checklist below] |
 
 ---

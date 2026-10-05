@@ -5,7 +5,7 @@ Railway gives you a free $5/month credit — enough to run the backend 24/7 for 
 ## 1. Prerequisites
 
 - Railway account at [railway.app](https://railway.app) (GitHub login)
-- `SynapsVault-backend` pushed to `github.com/SynapsVault/SynapsVault-backend` ✅ (already done)
+- `SynapsVault-backend` pushed to `github.com/SynapsVault/backend` ✅ (already done)
 - Supabase project for the database (free tier at [supabase.com](https://supabase.com))
 
 ---
@@ -15,7 +15,7 @@ Railway gives you a free $5/month credit — enough to run the backend 24/7 for 
 1. Go to [supabase.com](https://supabase.com) → New project
 2. Name it `synapsvault-testnet`, choose any region
 3. Copy the **Connection string** (Settings → Database → Connection string → URI mode)
-   - Format: `postgres://postgres:[password]@db.[ref].supabase.co:5432/postgres`
+   - Format: `postgres://postgres:[YOUR-DB-PASSWORD]@db.[ref].supabase.co:5432/postgres`
 4. Copy the **Service Role Key** (Settings → API → `service_role`)
 
 ---
@@ -25,7 +25,7 @@ Railway gives you a free $5/month credit — enough to run the backend 24/7 for 
 ### Option A — Railway Dashboard (easiest)
 
 1. [railway.app/new](https://railway.app/new) → **Deploy from GitHub repo**
-2. Choose `bolu26/SynapsVault-backend`
+2. Choose `SynapsVault/backend`
 3. Railway auto-detects the `Dockerfile` and builds it
 4. Go to **Settings → Domains** → **Generate Domain**
    - You'll get a URL like `synapsvault-backend-production.up.railway.app`
@@ -48,7 +48,7 @@ In Railway dashboard → your service → **Variables**, add:
 
 ```env
 # Database
-DATABASE_URL=postgres://postgres:[pass]@db.[ref].supabase.co:5432/postgres
+DATABASE_URL=postgres://postgres:[YOUR-DB-PASSWORD]@db.[ref].supabase.co:5432/postgres
 
 # Supabase (for file storage)
 SUPABASE_URL=https://[ref].supabase.co

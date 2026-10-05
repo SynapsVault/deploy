@@ -43,7 +43,7 @@
 4. Click the **URI** tab
 5. Copy the full connection string — it looks like:
    ```
-   postgres://postgres:[YOUR-PASSWORD]@db.abcdefghijkl.supabase.co:5432/postgres
+   postgres://postgres:[YOUR-DB-PASSWORD]@db.abcdefghijkl.supabase.co:5432/postgres
    ```
 6. Replace `[YOUR-PASSWORD]` with the password you set in Step 1.2
 7. **Save this** — this is your `DATABASE_URL`
@@ -59,7 +59,7 @@
 3. Click the eye icon to reveal it, then copy it
 4. **Save this** — this is your `SUPABASE_SERVICE_KEY`
 
-It looks like: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSJ...`
+It looks like: `<your-supabase-service-role-key>`
 
 ---
 
@@ -98,7 +98,7 @@ It looks like: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSJ...`
 1. From the Railway dashboard click **New Project**
 2. Select **Deploy from GitHub repo**
 3. If this is your first time, click **Configure GitHub App** and give Railway access to your repositories
-4. Search for and select **`bolu26/SynapsVault-backend`**
+4. Search for and select **`SynapsVault/backend`**
 5. Click **Deploy Now**
 
 Railway will start building automatically using the `Dockerfile` in the repo.
@@ -127,7 +127,7 @@ Add each variable below. Click **+ New Variable** for each one.
 
 | Variable | Value | Where to get it |
 |---|---|---|
-| `DATABASE_URL` | `postgres://postgres:[PASSWORD]@db.[REF].supabase.co:5432/postgres` | Supabase → Settings → Database → Connection string (URI) |
+| `DATABASE_URL` | `postgres://postgres:[YOUR-DB-PASSWORD]@db.[REF].supabase.co:5432/postgres` | Supabase → Settings → Database → Connection string (URI) |
 | `SUPABASE_URL` | `https://[REF].supabase.co` | Supabase → Settings → API → Project URL |
 | `SUPABASE_SERVICE_KEY` | `eyJ...` (long JWT token) | Supabase → Settings → API → service_role |
 | `SUPABASE_STORAGE_BUCKET` | `resources` | You created this in Step 1.6 |
@@ -136,12 +136,12 @@ Add each variable below. Click **+ New Variable** for each one.
 | `SOROBAN_RPC_URL` | `https://soroban-testnet.stellar.org` | Fixed value |
 | `USDC_CONTRACT_ID` | `CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA` | Fixed — testnet USDC |
 | `PAY_TO` | `GCK7ALS7EP5DQG4UZMON3XTNUE7SSIW27XW24UOLXDHBOHWEWIGZVPZF` | Your BACKEND wallet public key |
-| `AGENT_SECRET_KEY` | `SD52YGCD2IS7BS7ULV5VKGHXIJAJUMQJV6M3M34Z2GNAPSYBDUQHCOLX` | Your BACKEND wallet secret key |
-| `REGISTRY_SECRET_KEY` | `SD52YGCD2IS7BS7ULV5VKGHXIJAJUMQJV6M3M34Z2GNAPSYBDUQHCOLX` | Same as AGENT_SECRET_KEY |
+| `AGENT_SECRET_KEY` | `<your-stellar-secret-key>` | Your BACKEND wallet secret key |
+| `REGISTRY_SECRET_KEY` | `<your-stellar-secret-key>` | Same as AGENT_SECRET_KEY |
 | `VAULT_REGISTRY_CONTRACT_ID` | `CBQEIMSRPSRKJJHGOELZTP3CISZVHZ6WPKZTWJMYZXHFXPGHHWFQBD4H` | Deployed contract |
 | `REGISTRY_CONTRACT_ID` | `CBQEIMSRPSRKJJHGOELZTP3CISZVHZ6WPKZTWJMYZXHFXPGHHWFQBD4H` | Same as above |
 | `OPENROUTER_API_KEY` | Get a free key at [openrouter.ai](https://openrouter.ai) | Free tier available |
-| `ADMIN_API_KEY` | `synapse-admin-2025-xK9mP3nQ8rL2vB7s` | Keep this secret |
+| `ADMIN_API_KEY` | `<your-admin-api-key>` | Keep this secret |
 
 ---
 
@@ -169,12 +169,12 @@ NETWORK=testnet
 SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
 USDC_CONTRACT_ID=CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA
 PAY_TO=GCK7ALS7EP5DQG4UZMON3XTNUE7SSIW27XW24UOLXDHBOHWEWIGZVPZF
-AGENT_SECRET_KEY=SD52YGCD2IS7BS7ULV5VKGHXIJAJUMQJV6M3M34Z2GNAPSYBDUQHCOLX
-REGISTRY_SECRET_KEY=SD52YGCD2IS7BS7ULV5VKGHXIJAJUMQJV6M3M34Z2GNAPSYBDUQHCOLX
+AGENT_SECRET_KEY=<your-stellar-secret-key>
+REGISTRY_SECRET_KEY=<your-stellar-secret-key>
 VAULT_REGISTRY_CONTRACT_ID=CBQEIMSRPSRKJJHGOELZTP3CISZVHZ6WPKZTWJMYZXHFXPGHHWFQBD4H
 REGISTRY_CONTRACT_ID=CBQEIMSRPSRKJJHGOELZTP3CISZVHZ6WPKZTWJMYZXHFXPGHHWFQBD4H
 OPENROUTER_API_KEY=sk-or-...   ← FILL IN (get free at openrouter.ai)
-ADMIN_API_KEY=synapse-admin-2025-xK9mP3nQ8rL2vB7s
+ADMIN_API_KEY=<your-admin-api-key>
 NODE_ENV=production
 PORT=3000
 FACILITATOR_URL=https://www.x402.org/facilitator
@@ -235,7 +235,7 @@ https://your-app.up.railway.app/resources
 
 # Admin stats — needs header
 curl https://your-app.up.railway.app/admin/stats \
-  -H "X-Admin-Key: synapse-admin-2025-xK9mP3nQ8rL2vB7s"
+  -H "X-Admin-Key: <your-admin-api-key>"
 ```
 
 If `/health` returns `{"status":"ok"}` — your backend is live. ✅
@@ -360,7 +360,7 @@ Run these to confirm everything works end-to-end:
 
 ```bash
 BACKEND="https://your-app.up.railway.app"
-ADMIN_KEY="synapse-admin-2025-xK9mP3nQ8rL2vB7s"
+ADMIN_KEY="<your-admin-api-key>"
 
 echo "1. Health check"
 curl -s $BACKEND/health | python3 -m json.tool
@@ -426,4 +426,4 @@ subscription:   CCCE6Q6WHDICGMQWXXXMM6X7YDGK3BXU4JNQJNSIA6XQRC52MQL42CD6
 
 ---
 
-*If you get stuck on any step, open an issue at https://github.com/SynapsVault/SynapsVault-backend/issues*
+*If you get stuck on any step, open an issue at https://github.com/SynapsVault/backend/issues*
