@@ -162,10 +162,10 @@ SynapsVault Backend (Express + TypeScript)
 
 ## 8. Team
 
-**Agbadesigner (bolu26)**
+**Agbadesigner (Busiii-adetiba)**
 - Full-stack developer + designer, Lagos, Nigeria
 - 3+ years building Web2 SaaS products
-- GitHub: https://github.com/bolu26
+- GitHub: https://github.com/Busiii-adetiba
 - Built all 3 SynapsVault repos end-to-end
 
 *Seeking a Soroban/Rust co-developer for M2–M3.*
