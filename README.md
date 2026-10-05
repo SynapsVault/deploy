@@ -52,7 +52,7 @@ npm install -g @railway/cli
 ### Step 1 — Generate keypairs
 
 ```bash
-cd SynapsVault-contracts   # or the deploy folder
+cd SynapsVault-deploy
 node scripts/01-generate-keypairs.js
 ```
 
