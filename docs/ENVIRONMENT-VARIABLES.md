@@ -14,10 +14,12 @@ This document is the single source of truth for every environment variable used 
 4. [Contracts](#contracts)
 5. [Secrets & API Keys](#secrets--api-keys)
 6. [Server & Runtime](#server--runtime)
-7. [Frontend (Vite)](#frontend-vite)
-8. [Per-Environment Matrix](#per-environment-matrix)
-9. [.env.example Template](#envexample-template)
-10. [Security Notes](#security-notes)
+7. [Backup](#backup)
+8. [Docker Compose & Kubernetes](#docker-compose--kubernetes)
+9. [Frontend (Vite)](#frontend-vite)
+10. [Per-Environment Matrix](#per-environment-matrix)
+11. [.env.example Template](#envexample-template)
+12. [Security Notes](#security-notes)
 
 ---
 
@@ -49,6 +51,12 @@ This document is the single source of truth for every environment variable used 
 | `PORT` | No | `3000` | Backend |
 | `ALLOWED_ORIGINS` | No | `http://localhost:5173` | Backend |
 | `FACILITATOR_URL` | Yes | — | Backend |
+| `BACKUP_ENCRYPTION_KEY` | Yes | — | Backend / Scripts |
+| `BACKUP_STORAGE_BUCKET` | No | `backups` | Backend / Scripts |
+| `BACKUP_STORAGE_ENDPOINT` | No | — | Backend / Scripts |
+| `BACKUP_STORAGE_ACCESS_KEY` | No | — | Backend / Scripts |
+| `BACKUP_STORAGE_SECRET_KEY` | No | — | Backend / Scripts |
+| `BACKUP_RETENTION_DAYS` | No | `30` | Backend / Scripts |
 | `VITE_API_URL` | Yes | `http://localhost:3000` | Frontend |
 | `POSTGRES_USER` | No | `postgres` | Docker Compose |
 | `POSTGRES_PASSWORD` | No | `postgres` | Docker Compose |
@@ -224,6 +232,49 @@ This document is the single source of truth for every environment variable used 
 
 ---
 
+## Backup
+
+### `BACKUP_ENCRYPTION_KEY`
+- **Purpose:** Symmetric key used to encrypt database and storage backups before they are written to the backup destination.
+- **Required:** Yes
+- **Default:** none
+- **Format:** 32-byte key, base64-encoded (e.g. `openssl rand -base64 32`)
+- **Notes:** Store in a secret manager. Losing this key makes existing backups unrecoverable; rotate only with a re-encryption plan.
+
+### `BACKUP_STORAGE_BUCKET`
+- **Purpose:** Name of the bucket/container where encrypted backups are stored.
+- **Required:** No
+- **Default:** `backups`
+
+### `BACKUP_STORAGE_ENDPOINT`
+- **Purpose:** S3-compatible endpoint for the backup destination (e.g. AWS S3, Cloudflare R2, MinIO).
+- **Required:** No
+- **Default:** none (uses the provider default endpoint)
+- **Examples:**
+  - AWS S3: `https://s3.us-east-1.amazonaws.com`
+  - Cloudflare R2: `https://<account-id>.r2.cloudflarestorage.com`
+  - MinIO (local): `http://localhost:9000`
+
+### `BACKUP_STORAGE_ACCESS_KEY`
+- **Purpose:** Access key ID used to authenticate to the backup storage endpoint.
+- **Required:** No
+- **Default:** none
+- **Notes:** Required when `BACKUP_STORAGE_ENDPOINT` is set. Store in a secret manager.
+
+### `BACKUP_STORAGE_SECRET_KEY`
+- **Purpose:** Secret access key paired with `BACKUP_STORAGE_ACCESS_KEY`.
+- **Required:** No
+- **Default:** none
+- **Notes:** Store in a secret manager. Never log or expose to the frontend.
+
+### `BACKUP_RETENTION_DAYS`
+- **Purpose:** Number of days encrypted backups are retained before automatic pruning.
+- **Required:** No
+- **Default:** `30`
+- **Notes:** Must be a positive integer. Ensure retention meets your compliance requirements.
+
+---
+
 ## Docker Compose & Kubernetes
 
 These variables are consumed by the deployment manifests rather than by the application code directly. They are grouped here so that operators can find them alongside the rest of the deployment configuration.
@@ -309,6 +360,12 @@ These variables are consumed by the deployment manifests rather than by the appl
 | `PORT` | `3000` | `3000` | `3000` |
 | `ALLOWED_ORIGINS` | `http://localhost:5173` | `https://staging.example.com` | `https://app.example.com` |
 | `FACILITATOR_URL` | `http://localhost:4000` | `https://facilitator.staging.example.com` | `https://facilitator.example.com` |
+| `BACKUP_ENCRYPTION_KEY` | Dev base64 key | Staging base64 key | Prod base64 key (secret manager) |
+| `BACKUP_STORAGE_BUCKET` | `backups-dev` | `backups-staging` | `backups-prod` |
+| `BACKUP_STORAGE_ENDPOINT` | `http://localhost:9000` | `https://<account-id>.r2.cloudflarestorage.com` | `https://s3.<region>.amazonaws.com` |
+| `BACKUP_STORAGE_ACCESS_KEY` | Dev access key | Staging access key | Prod access key (secret manager) |
+| `BACKUP_STORAGE_SECRET_KEY` | Dev secret key | Staging secret key | Prod secret key (secret manager) |
+| `BACKUP_RETENTION_DAYS` | `7` | `30` | `90` |
 | `VITE_API_URL` | `http://localhost:3000` | `https://api.staging.example.com` | `https://api.example.com` |
 | `POSTGRES_USER` | `postgres` | `postgres` | `postgres` |
 | `POSTGRES_PASSWORD` | `postgres` | Secret manager | Secret manager |
@@ -366,6 +423,16 @@ NODE_ENV=development
 PORT=3000
 ALLOWED_ORIGINS=http://localhost:5173
 FACILITATOR_URL=http://localhost:4000
+
+# ---------------------------------------------------------------------------
+# Backup
+# ---------------------------------------------------------------------------
+BACKUP_ENCRYPTION_KEY=replace-with-openssl-rand-base64-32
+BACKUP_STORAGE_BUCKET=backups
+BACKUP_STORAGE_ENDPOINT=https://s3.us-east-1.amazonaws.com
+BACKUP_STORAGE_ACCESS_KEY=your-backup-storage-access-key
+BACKUP_STORAGE_SECRET_KEY=your-backup-storage-secret-key
+BACKUP_RETENTION_DAYS=30
 
 # ---------------------------------------------------------------------------
 # Frontend (Vite)
