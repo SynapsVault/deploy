@@ -1,0 +1,119 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+  external_labels:
+    monitor: 'synapsvault-monitor'
+    environment: 'production'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - 'alertmanager:9093'
+
+rule_files:
+  - 'alerts/*.yml'
+
+scrape_configs:
+  - job_name: 'prometheus'
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+          tier: 'monitoring'
+
+  - job_name: 'synapsvault-backend'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metrics_path: '/metrics'
+    scheme: 'http'
+    static_configs:
+      - targets: ['backend:8000']
+        labels:
+          service: 'synapsvault-backend'
+          tier: 'application'
+          environment: 'production'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '([^:]+)(?::\d+)?'
+        replacement: '${1}'
+
+  - job_name: 'synapsvault-backend-health'
+    scrape_interval: 30s
+    scrape_timeout: 5s
+    metrics_path: '/health'
+    scheme: 'http'
+    static_configs:
+      - targets: ['backend:8000']
+        labels:
+          service: 'synapsvault-backend'
+          tier: 'application'
+          check: 'health'
+
+  - job_name: 'synapsvault-frontend'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    metrics_path: '/metrics'
+    scheme: 'http'
+    static_configs:
+      - targets: ['frontend:3000']
+        labels:
+          service: 'synapsvault-frontend'
+          tier: 'application'
+          environment: 'production'
+
+  - job_name: 'synapsvault-database'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+        labels:
+          service: 'synapsvault-database'
+          tier: 'data'
+          environment: 'production'
+
+  - job_name: 'node-exporter'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: 'node-exporter'
+          tier: 'infrastructure'
+          environment: 'production'
+
+  - job_name: 'cadvisor'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          service: 'cadvisor'
+          tier: 'infrastructure'
+          environment: 'production'
+
+  - job_name: 'nginx'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['nginx-exporter:9113']
+        labels:
+          service: 'nginx'
+          tier: 'infrastructure'
+          environment: 'production'
+
+  - job_name: 'redis'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          service: 'redis'
+          tier: 'data'
+          environment: 'production'
+</｜｜DSML｜｜ parameter>
+</invoke>
