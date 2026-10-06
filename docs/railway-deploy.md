@@ -44,6 +44,8 @@ railway domain        # get your public URL
 
 ## 4. Set environment variables
 
+> See [docs/ENVIRONMENT-VARIABLES.md](./ENVIRONMENT-VARIABLES.md) for the full reference of every variable, defaults, and required/optional status.
+
 In Railway dashboard → your service → **Variables**, add:
 
 ```env
@@ -98,6 +100,8 @@ pnpm drizzle-kit migrate
 ---
 
 ## 6. Verify deployment
+
+> For ongoing health checks, metrics, and alerting, see [docs/MONITORING.md](./MONITORING.md).
 
 ```bash
 # Health check
