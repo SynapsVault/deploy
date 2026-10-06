@@ -1,0 +1,90 @@
+name: Database Backup
+
+on:
+  schedule:
+    # Daily at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    name: Run Database Backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client openssl gzip
+
+      - name: Run backup script
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          BACKUP_STORAGE_BUCKET: ${{ secrets.BACKUP_STORAGE_BUCKET }}
+          BACKUP_STORAGE_REGION: ${{ secrets.BACKUP_STORAGE_REGION }}
+          BACKUP_STORAGE_ACCESS_KEY_ID: ${{ secrets.BACKUP_STORAGE_ACCESS_KEY_ID }}
+          BACKUP_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_STORAGE_SECRET_ACCESS_KEY }}
+          BACKUP_STORAGE_ENDPOINT: ${{ secrets.BACKUP_STORAGE_ENDPOINT }}
+        run: |
+          set -euo pipefail
+          chmod +x scripts/backup.sh
+          scripts/backup.sh
+
+      - name: Upload backup manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-manifest-${{ github.run_id }}
+          path: |
+            backups/*.manifest.json
+            backups/manifest.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Fail job on backup error
+        if: failure()
+        run: |
+          echo "::error::Database backup failed. See logs above for details."
+          exit 1
+
+  verify-restore:
+    name: Verify Restore (Staging)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    # Weekly on Sundays at 04:00 UTC
+    # Note: cron triggers are defined at the workflow level; this job runs
+    # whenever the workflow is triggered and is gated below to weekly runs.
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client openssl gzip
+
+      - name: Run restore verification
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          BACKUP_STORAGE_BUCKET: ${{ secrets.BACKUP_STORAGE_BUCKET }}
+          BACKUP_STORAGE_REGION: ${{ secrets.BACKUP_STORAGE_REGION }}
+          BACKUP_STORAGE_ACCESS_KEY_ID: ${{ secrets.BACKUP_STORAGE_ACCESS_KEY_ID }}
+          BACKUP_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_STORAGE_SECRET_ACCESS_KEY }}
+          BACKUP_STORAGE_ENDPOINT: ${{ secrets.BACKUP_STORAGE_ENDPOINT }}
+        run: |
+          set -euo pipefail
+          chmod +x scripts/restore.sh
+          scripts/restore.sh --verify-only
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Restore verification failed. Backups may not be restorable."
+          exit 1

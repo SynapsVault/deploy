@@ -166,6 +166,12 @@ runbook — health checks, dashboards, alert thresholds, and on-call procedures.
 See [docs/ENVIRONMENT-VARIABLES.md](./docs/ENVIRONMENT-VARIABLES.md) for the
 full reference of backend, frontend, and contract environment variables.
 
+## Backup & Restore
+
+See [docs/BACKUP-RESTORE.md](./docs/BACKUP-RESTORE.md) for the backup and
+restore runbook — database snapshots, contract state recovery, and disaster
+recovery procedures.
+
 ---
 
 ## Troubleshooting
