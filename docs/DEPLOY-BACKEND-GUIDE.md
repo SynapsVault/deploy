@@ -119,6 +119,8 @@ Railway will start building automatically using the `Dockerfile` in the repo.
 
 This is the most important step. Click on your **SynapsVault-backend** service (the box in the project), then click the **Variables** tab.
 
+> 📖 For the canonical, complete list of every environment variable the backend reads — including defaults, validation rules, and which ones are required — see **[docs/ENVIRONMENT-VARIABLES.md](./ENVIRONMENT-VARIABLES.md)**. The tables below cover the values you need for this deployment; the reference guide is the source of truth.
+
 Add each variable below. Click **+ New Variable** for each one.
 
 ---
@@ -239,6 +241,8 @@ curl https://your-app.up.railway.app/admin/stats \
 ```
 
 If `/health` returns `{"status":"ok"}` — your backend is live. ✅
+
+> 📈 Once the backend is live, set up logging, health-check alerting, and dashboards by following **[docs/MONITORING.md](./MONITORING.md)**.
 
 ---
 
@@ -416,7 +420,7 @@ subscription:   CCCE6Q6WHDICGMQWXXXMM6X7YDGK3BXU4JNQJNSIA6XQRC52MQL42CD6
 | Problem | Fix |
 |---|---|
 | Railway build fails | Check the build log — usually a missing env var or npm install error |
-| `config_invalid` in server log | A required env var is missing — check the list in Part 2 again |
+| `config_invalid` in server log | A required env var is missing — check the list in Part 2 and the canonical reference in [docs/ENVIRONMENT-VARIABLES.md](./ENVIRONMENT-VARIABLES.md) |
 | `/health` returns 502 | Server crashed on startup — open Railway → your service → Logs |
 | Database connection error | Check `DATABASE_URL` — make sure the password is correct and not URL-encoded twice |
 | Supabase connection refused | Supabase free tier sleeps after inactivity — visit the dashboard to wake it |
