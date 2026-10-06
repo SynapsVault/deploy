@@ -50,6 +50,11 @@ This document is the single source of truth for every environment variable used 
 | `ALLOWED_ORIGINS` | No | `http://localhost:5173` | Backend |
 | `FACILITATOR_URL` | Yes | — | Backend |
 | `VITE_API_URL` | Yes | `http://localhost:3000` | Frontend |
+| `POSTGRES_USER` | No | `postgres` | Docker Compose |
+| `POSTGRES_PASSWORD` | No | `postgres` | Docker Compose |
+| `POSTGRES_DB` | No | `app` | Docker Compose |
+| `IMAGE_TAG` | No | `latest` | Docker Compose / Kubernetes |
+| `K8S_NAMESPACE` | No | `default` | Kubernetes |
 
 ---
 
@@ -219,6 +224,53 @@ This document is the single source of truth for every environment variable used 
 
 ---
 
+## Docker Compose & Kubernetes
+
+These variables are consumed by the deployment manifests rather than by the application code directly. They are grouped here so that operators can find them alongside the rest of the deployment configuration.
+
+### `POSTGRES_USER`
+- **Purpose:** PostgreSQL superuser created by the `postgres` service in `docker-compose.yml`.
+- **Required:** No
+- **Default:** `postgres`
+- **Consumed by:** `docker-compose.yml`
+- **Notes:** Must match the user component of `DATABASE_URL` when running the stack locally.
+
+### `POSTGRES_PASSWORD`
+- **Purpose:** Password for the PostgreSQL superuser in `docker-compose.yml`.
+- **Required:** No
+- **Default:** `postgres`
+- **Consumed by:** `docker-compose.yml`
+- **Notes:** Development default only. Never reuse this value outside local development.
+
+### `POSTGRES_DB`
+- **Purpose:** Name of the database created by the `postgres` service in `docker-compose.yml`.
+- **Required:** No
+- **Default:** `app`
+- **Consumed by:** `docker-compose.yml`
+- **Notes:** Must match the database component of `DATABASE_URL`.
+
+### `IMAGE_TAG`
+- **Purpose:** Container image tag used when pulling/building the backend and frontend images.
+- **Required:** No
+- **Default:** `latest`
+- **Consumed by:** `docker-compose.yml`, Kubernetes manifests
+- **Notes:** In CI, set this to the immutable commit SHA or release tag rather than `latest`.
+
+### `K8S_NAMESPACE`
+- **Purpose:** Kubernetes namespace that the manifests are applied to.
+- **Required:** No
+- **Default:** `default`
+- **Consumed by:** Kubernetes manifests
+- **Notes:** Use a dedicated namespace per environment (e.g. `app-staging`, `app-prod`).
+
+### Where each variable is consumed
+
+- **`docker-compose.yml`** reads `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, and `IMAGE_TAG` from the shell environment or a local `.env` file.
+- **`k8s/configmap.yaml`** holds non-sensitive configuration such as `NODE_ENV`, `PORT`, `ALLOWED_ORIGINS`, `STELLAR_NETWORK`, `SOROBAN_RPC_URL`, `STELLAR_HORIZON_URL`, `IMAGE_TAG`, and `K8S_NAMESPACE`.
+- **`k8s/secrets.yaml`** holds sensitive values such as `DATABASE_URL`, `SUPABASE_SERVICE_KEY`, `AGENT_SECRET_KEY`, `REGISTRY_SECRET_KEY`, `STELLAR_SECRET_KEY`, `OPENROUTER_API_KEY`, and `ADMIN_API_KEY`. These must be created out-of-band (e.g. `kubectl create secret`) and never committed with real values.
+
+---
+
 ## Frontend (Vite)
 
 ### `VITE_API_URL`
@@ -258,6 +310,11 @@ This document is the single source of truth for every environment variable used 
 | `ALLOWED_ORIGINS` | `http://localhost:5173` | `https://staging.example.com` | `https://app.example.com` |
 | `FACILITATOR_URL` | `http://localhost:4000` | `https://facilitator.staging.example.com` | `https://facilitator.example.com` |
 | `VITE_API_URL` | `http://localhost:3000` | `https://api.staging.example.com` | `https://api.example.com` |
+| `POSTGRES_USER` | `postgres` | `postgres` | `postgres` |
+| `POSTGRES_PASSWORD` | `postgres` | Secret manager | Secret manager |
+| `POSTGRES_DB` | `app` | `app` | `app` |
+| `IMAGE_TAG` | `latest` | Commit SHA | Release tag |
+| `K8S_NAMESPACE` | `default` | `app-staging` | `app-prod` |
 
 ---
 
@@ -314,6 +371,15 @@ FACILITATOR_URL=http://localhost:4000
 # Frontend (Vite)
 # ---------------------------------------------------------------------------
 VITE_API_URL=http://localhost:3000
+
+# ---------------------------------------------------------------------------
+# Docker Compose & Kubernetes
+# ---------------------------------------------------------------------------
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=app
+IMAGE_TAG=latest
+K8S_NAMESPACE=default
 ```
 
 ---
