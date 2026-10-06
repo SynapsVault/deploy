@@ -115,5 +115,18 @@ scrape_configs:
           service: 'redis'
           tier: 'data'
           environment: 'production'
+
+  - job_name: 'backup-metrics'
+    scrape_interval: 60s
+    scrape_timeout: 10s
+    metrics_path: '/metrics'
+    scheme: 'http'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: 'backup'
+          tier: 'infrastructure'
+          environment: 'production'
+          source: 'textfile'
 </｜｜DSML｜｜ parameter>
 </invoke>
