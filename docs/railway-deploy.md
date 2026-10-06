@@ -2,6 +2,11 @@
 
 Railway gives you a free $5/month credit — enough to run the backend 24/7 for testnet demos.
 
+> **Other deployment paths**
+> - **Local development / self-hosted:** see [docker-compose.yml](../docker-compose.yml) and the local setup notes in [README.md](../README.md).
+> - **Production (Kubernetes):** see [docs/DEPLOYMENT.md](./DEPLOYMENT.md) for the Kubernetes manifests, scaling, and production hardening guidance.
+> - **Database migrations & rollback:** see [docs/DATABASE-ROLLBACK.md](./DATABASE-ROLLBACK.md) for rollback procedures. This guide only covers applying forward migrations.
+
 ## 1. Prerequisites
 
 - Railway account at [railway.app](https://railway.app) (GitHub login)
@@ -77,6 +82,8 @@ PORT=3000
 ---
 
 ## 5. Run database migrations
+
+> This section covers **forward migrations only**. For rollback procedures (failed migration, bad deploy, data recovery), see [docs/DATABASE-ROLLBACK.md](./DATABASE-ROLLBACK.md).
 
 After deploy, open Railway **Shell** tab:
 
