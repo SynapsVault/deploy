@@ -36,6 +36,20 @@ Compare the two lists to determine which migrations are applied vs. pending.
 
 Drizzle has no built-in `down` command, so roll back by applying a reverse migration.
 
+**Scripted (recommended):** write the reverse SQL (step 2 below), then let
+[`scripts/db-rollback.sh`](../scripts/db-rollback.sh) apply it *and* remove the
+latest row from `drizzle.__drizzle_migrations` in a single transaction:
+
+```bash
+# Rehearse: runs everything, then rolls the transaction back
+DATABASE_URL=... ./scripts/db-rollback.sh --file drizzle/9999_rollback_last.sql --dry-run
+
+# Apply (prompts for confirmation when --env production, unless --yes)
+DATABASE_URL=... ./scripts/db-rollback.sh --file drizzle/9999_rollback_last.sql --env production
+```
+
+If the reverse SQL fails, nothing is committed. The manual equivalent is:
+
 1. **Identify the last applied migration:**
 
    ```bash

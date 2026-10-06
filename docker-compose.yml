@@ -1,4 +1,15 @@
-version: "3.9"
+# Local full-stack environment: Postgres, backend (+ migrations), frontend and
+# the monitoring stack.
+#
+# The Dockerfiles live in this repo, but the application source lives in the
+# SynapsVault/backend and SynapsVault/frontend repos. Clone them next to this
+# repo (or point BACKEND_SRC / FRONTEND_SRC at them) and run compose from this
+# repo's root directory:
+#
+#   git clone https://github.com/SynapsVault/backend  ../backend
+#   git clone https://github.com/SynapsVault/frontend ../frontend
+#   cp .env.example .env
+#   docker compose up --build
 
 services:
   postgres:
@@ -22,50 +33,77 @@ services:
     networks:
       - app_network
 
-  backend:
+  # One-shot: applies Drizzle migrations, then exits.
+  migrate:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: app_backend
-    restart: unless-stopped
-    env_file:
-      - .env
+      context: ${BACKEND_SRC:-../backend}
+      dockerfile: ${PWD}/backend/Dockerfile
+      target: migrate
+    container_name: app_migrate
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-app}}
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-app}
-    ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-app}
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - app_network
 
-  frontend:
+  backend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: app_frontend
+      context: ${BACKEND_SRC:-../backend}
+      dockerfile: ${PWD}/backend/Dockerfile
+      target: runtime
+    container_name: app_backend
     restart: unless-stopped
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
-      BACKEND_URL: ${BACKEND_URL:-http://backend:8000}
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-app}
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      - "${BACKEND_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - app_network
+
+  frontend:
+    build:
+      context: ${FRONTEND_SRC:-../frontend}
+      dockerfile: ${PWD}/frontend/Dockerfile
+      args:
+        # Inlined into the bundle at build time; the browser calls the backend
+        # directly on its published port.
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
+        VITE_NETWORK: ${VITE_STELLAR_NETWORK:-testnet}
+    container_name: app_frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
     depends_on:
       backend:
         condition: service_started
     networks:
       - app_network
 
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: app_postgres_exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-app}?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app_network
+
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.53.2
     container_name: app_prometheus
     restart: unless-stopped
     volumes:
@@ -85,7 +123,7 @@ services:
       - app_network
 
   alertmanager:
-    image: prom/alertmanager:latest
+    image: prom/alertmanager:v0.27.0
     container_name: app_alertmanager
     restart: unless-stopped
     volumes:
@@ -100,7 +138,7 @@ services:
       - app_network
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.2.0
     container_name: app_grafana
     restart: unless-stopped
     environment:
@@ -110,6 +148,7 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana-dashboard.json:/var/lib/grafana/dashboards/backend-overview.json:ro
     ports:
       - "${GRAFANA_PORT:-3001}:3000"
     depends_on:

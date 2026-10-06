@@ -25,28 +25,51 @@ Step 10 Record demo video          (30 min)
 For local development, production Kubernetes deployment, database rollback,
 and automated contract deployment, see the dedicated sections below.
 
+### Repository layout
+
+This repo holds deployment tooling only; the application code lives in
+[SynapsVault/backend](https://github.com/SynapsVault/backend),
+[SynapsVault/frontend](https://github.com/SynapsVault/frontend) and
+[SynapsVault/contracts](https://github.com/SynapsVault/contracts).
+
+| Path | Contents |
+|------|----------|
+| `backend/Dockerfile`, `frontend/Dockerfile` | Image builds (the build context is a checkout of the app repo) |
+| `k8s/` | Kustomize manifests for production |
+| `scripts/` | Contract deploy/rollback, catalog seeding, smoke test, DB backup/restore/rollback |
+| `monitoring/` | Prometheus, Alertmanager and Grafana config |
+| `.github/workflows/` | CI, image build + K8s deploy, contract deploy, scheduled backups |
+| `test/` | Unit tests for the contract scripts (`npm test`) |
+
 ---
 
 ## Local Development (Docker Compose)
 
-Bring up the full stack locally with Docker Compose:
+Clone the application repos next to this one, then bring up the full stack
+from this repo's root (compose builds the images from the sibling checkouts):
 
 ```bash
-docker compose up
+git clone https://github.com/SynapsVault/backend  ../backend
+git clone https://github.com/SynapsVault/frontend ../frontend
+cp .env.example .env
+docker compose up --build
 ```
 
-Service URLs:
+Service URLs (ports are configurable in `.env`):
 
-| Service  | URL                     |
-|----------|-------------------------|
-| Frontend | http://localhost:5173   |
-| Backend  | http://localhost:3000   |
-| Postgres | localhost:5432          |
+| Service    | URL                     |
+|------------|-------------------------|
+| Frontend   | http://localhost:8080   |
+| Backend    | http://localhost:3000   |
+| Postgres   | localhost:5432          |
+| Prometheus | http://localhost:9090   |
+| Grafana    | http://localhost:3001   |
 
-Run database migrations against the local stack:
+Database migrations run automatically: the one-shot `migrate` service applies
+them before `backend` starts. To re-run them manually:
 
 ```bash
-docker compose exec backend pnpm drizzle-kit migrate
+docker compose run --rm migrate
 ```
 
 ---
@@ -68,10 +91,40 @@ If a migration needs to be reverted, follow
 
 ## Automated Contract Deployment
 
-Contracts are deployed automatically via
-[`scripts/deploy-contracts.js`](./scripts/deploy-contracts.js) and the
-`deploy-contracts` GitHub Actions workflow. See the workflow definition in
-[`.github/workflows/`](./.github/workflows/) for triggers and required secrets.
+Contracts are deployed via
+[`scripts/deploy-contracts.cjs`](./scripts/deploy-contracts.cjs)
+(`npm run deploy:contracts`) and the **Deploy Contracts** GitHub Actions
+workflow (manual dispatch), which builds `SynapsVault/contracts` and deploys to
+testnet or — after environment approval — mainnet. It needs the
+`DEPLOYER_SECRET_KEY` secret (plus `MAINNET_RPC_URL` for mainnet). Roll back to
+previous contract IDs with
+[`scripts/rollback-contracts.cjs`](./scripts/rollback-contracts.cjs). See
+[docs/contract-deploy-guide.md](./docs/contract-deploy-guide.md).
+
+---
+
+## Continuous Integration
+
+The **CI** workflow runs on every pull request and push to `main`:
+
+| Job | Checks |
+|-----|--------|
+| Lint GitHub workflows | `actionlint` (including shellcheck of `run:` blocks) |
+| Lint shell scripts | `shellcheck` + `bash -n` on `scripts/*.sh` |
+| Node scripts and tests | syntax check, `npm test`, CLI smoke tests |
+| Validate Kubernetes manifests | `kubectl kustomize` + `kubeconform -strict` |
+| Validate monitoring config | `promtool`, `amtool`, dashboard JSON |
+| Validate docker-compose | `docker compose config` with `.env.example` |
+| Build images | backend, backend-migrate and frontend images from the app repos |
+
+Run the same checks locally before pushing:
+
+```bash
+npm ci && npm test
+shellcheck scripts/*.sh
+kubectl kustomize k8s/ > /dev/null
+cp .env.example .env && docker compose config --quiet
+```
 
 ---
 
@@ -85,12 +138,14 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source ~/.cargo/env
 rustup target add wasm32-unknown-unknown
 
-# Soroban CLI
-cargo install --locked soroban-cli
-soroban --version   # should print 21.x.x
+# Stellar CLI (successor to soroban-cli; scripts fall back to `soroban`)
+# See https://developers.stellar.org/docs/tools/cli for install options
+stellar --version
 
-# Node.js 20+ (for scripts)
-node --version   # should print v20.x.x
+# Node.js 22.12+ (for scripts; required by @stellar/stellar-sdk 17)
+nvm use             # reads .nvmrc
+node --version      # should print v22.x.x or newer
+npm ci
 
 # Railway CLI (optional — can use dashboard instead)
 npm install -g @railway/cli
@@ -103,7 +158,7 @@ npm install -g @railway/cli
 ### Step 1 — Generate keypairs
 
 ```bash
-cd SynapsVault-deploy
+cd deploy   # this repository
 node scripts/01-generate-keypairs.js
 ```
 
@@ -123,10 +178,20 @@ Verify at: https://stellar.expert/explorer/testnet/account/G[DEPLOYER]
 ```bash
 export DEPLOYER_SECRET=S[your_deployer_secret]
 export BACKEND_PUBLIC=G[your_backend_public_key]
+export CONTRACTS_DIR=../contracts      # checkout of SynapsVault/contracts
 
 bash scripts/03-deploy-contracts.sh    # builds + deploys, ~20 min
 source contract-ids.env
 bash scripts/04-init-contracts.sh      # calls init() on each contract
+```
+
+Or do both steps in one go with the SDK-based deployer (no Stellar CLI
+needed; build the WASM first):
+
+```bash
+STELLAR_SECRET_KEY=S[your_deployer_secret] ADMIN_PUBLIC_KEY=G[your_backend_public_key] \
+CONTRACTS_WASM_DIR=../contracts/target/wasm32-unknown-unknown/release \
+npm run deploy:contracts -- --network testnet
 ```
 
 Save the contract IDs from `contract-ids.env` — you need them for the backend.

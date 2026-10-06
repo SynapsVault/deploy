@@ -151,19 +151,19 @@ groups:
     rules:
       - alert: BackupJobFailed
         expr: |
-          backup_last_run_success{job="backend"} == 0
+          soroban_backup_success == 0
         for: 5m
         labels:
           severity: critical
           team: backend
         annotations:
           summary: "Backup job failed for {{ $labels.instance }}"
-          description: "The most recent backup run for {{ $labels.instance }} did not succeed (backup_last_run_success == 0) for more than 5 minutes."
+          description: "The most recent backup run for {{ $labels.instance }} did not succeed (soroban_backup_success == 0, written by scripts/backup.sh) for more than 5 minutes."
           runbook_url: "https://docs.example.com/runbooks/backup-failed"
 
       - alert: BackupStale
         expr: |
-          (time() - backup_last_success_timestamp_seconds{job="backend"}) > 26 * 3600
+          (time() - soroban_backup_last_success_timestamp_seconds) > 26 * 3600
         for: 15m
         labels:
           severity: warning

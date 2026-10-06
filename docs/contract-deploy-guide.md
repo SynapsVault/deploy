@@ -2,26 +2,43 @@
 
 Run these steps **once locally** from your machine. Takes ~20 minutes total.
 
-> **Preferred path:** use the automated scripts `scripts/deploy-contracts.js` and
-> `scripts/rollback-contracts.js`. The manual `soroban-cli` steps below are kept as a
-> fallback for debugging or when the scripts are unavailable.
+> **Preferred path:** use the automated scripts `scripts/deploy-contracts.cjs` and
+> `scripts/rollback-contracts.cjs` (or the **Deploy Contracts** GitHub Actions
+> workflow). The manual Stellar CLI steps below are kept as a fallback for
+> debugging or when the scripts are unavailable.
 
 ---
 
 ## Automated deployment (preferred)
 
 ```bash
-# Deploy all contracts (builds WASM, deploys, initialises, writes contract-ids.env)
-node scripts/deploy-contracts.js --network testnet
+# 1. Build the WASM in your SynapsVault/contracts checkout
+(cd ../contracts && cargo build --target wasm32-unknown-unknown --release --workspace)
 
-# Roll back to the previous deployment if something goes wrong
-node scripts/rollback-contracts.js --network testnet
+# 2. Keep a copy of the current IDs so you can roll back later
+cp contract-ids.env "contract-ids.env.$(date -u +%Y%m%dT%H%M%SZ)" 2>/dev/null || true
+
+# 3. Deploy all contracts (uploads WASM, deploys, calls init(admin), verifies,
+#    writes contract-ids.env). Add --dry-run to run only the pre-flight checks.
+STELLAR_SECRET_KEY=S... \
+ADMIN_PUBLIC_KEY=G...   `# optional; defaults to the deployer` \
+CONTRACTS_WASM_DIR=../contracts/target/wasm32-unknown-unknown/release \
+npm run deploy:contracts -- --network testnet
+
+# Roll back: point the backend at a previous set of contract IDs
+npm run rollback:contracts -- --backup contract-ids.env.<timestamp> \
+  --network testnet --target-env .env [--configmap backend-config] [--dry-run]
 ```
 
-The deploy script performs pre-flight checks, deploys `vault-registry`,
-`access-lease` and `subscription`, initialises them, and writes the resulting
-contract IDs to `contract-ids.env`. The rollback script restores the contract IDs
-and WASM hashes from the last known-good deployment.
+The deploy script performs pre-flight checks (valid key, funded account, WASM
+present), deploys `vault-registry`, `access-lease` and `subscription`,
+initialises each with `init(admin)`, and writes the resulting contract IDs to
+`contract-ids.env`. Mainnet requires typing a confirmation, or `--yes` in CI.
+
+Soroban contracts are immutable, so rollback never removes anything on-chain:
+it verifies that each contract in the backup file still exists on-chain, then
+rewrites those IDs in the target `.env` file and (optionally) merge-patches the
+Kubernetes ConfigMap. Restart the backend afterwards to pick up the change.
 
 ---
 
@@ -55,12 +72,11 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source ~/.cargo/env
 rustup target add wasm32-unknown-unknown
 
-# 2. Soroban CLI
-cargo install --locked soroban-cli
+# 2. Stellar CLI (the scripts fall back to the legacy `soroban` CLI)
+#    See https://developers.stellar.org/docs/tools/cli
 
 # 3. Verify
-soroban --version
-# → soroban 21.x.x
+stellar --version
 ```
 
 ---
@@ -68,8 +84,8 @@ soroban --version
 ## Step 1 — Generate keypairs
 
 ```bash
-cd SynapsVault-contracts  # or wherever you cloned
-node ../synapsvault-deploy/scripts/01-generate-keypairs.js
+cd deploy   # this repository; clone SynapsVault/contracts next to it
+node scripts/01-generate-keypairs.js
 ```
 
 Save all 5 keypairs in a password manager. You need:
@@ -83,7 +99,7 @@ Save all 5 keypairs in a password manager. You need:
 ## Step 2 — Fund all accounts
 
 ```bash
-node ../synapsvault-deploy/scripts/02-fund-accounts.js \
+node scripts/02-fund-accounts.js \
   GDEPLOYER... GBACKEND... GPUBLISHER1... GPUBLISHER2... GBUYER1...
 ```
 
@@ -95,13 +111,14 @@ Check balances at: https://stellar.expert/explorer/testnet
 
 ## Step 3 — Build + deploy contracts (manual fallback)
 
-> Prefer `node scripts/deploy-contracts.js` (see above). Use the manual steps below
+> Prefer `npm run deploy:contracts` (see above). Use the manual steps below
 > only if the automated script is unavailable.
 
 ```bash
 export DEPLOYER_SECRET=Syour_deployer_secret_key_here
+export CONTRACTS_DIR=../contracts   # your SynapsVault/contracts checkout
 
-bash ../synapsvault-deploy/scripts/03-deploy-contracts.sh
+bash scripts/03-deploy-contracts.sh
 ```
 
 This will:
@@ -136,7 +153,7 @@ source contract-ids.env
 export DEPLOYER_SECRET=Syour_deployer_secret_key_here
 export BACKEND_PUBLIC=Gyour_backend_wallet_public_key
 
-bash ../synapsvault-deploy/scripts/04-init-contracts.sh
+bash scripts/04-init-contracts.sh
 ```
 
 This calls `init(admin)` on `access-lease` and `subscription`, setting your backend

@@ -2,13 +2,40 @@ name: Database Backup
 
 on:
   schedule:
-    # Daily at 02:00 UTC
+    # Daily backup at 02:00 UTC
     - cron: '0 2 * * *'
+    # Weekly restore verification, Sundays at 04:00 UTC
+    - cron: '0 4 * * 0'
   workflow_dispatch:
+    inputs:
+      job:
+        description: 'What to run'
+        required: true
+        default: 'backup'
+        type: choice
+        options:
+          - backup
+          - verify-restore
+          - both
+
+permissions:
+  contents: read
+
+concurrency:
+  group: database-backup
+  cancel-in-progress: false
+
+env:
+  # Match (or exceed) the major version of the Postgres server being dumped;
+  # pg_dump refuses to dump a newer server. Supabase currently runs 15 or 17.
+  PG_CLIENT_VERSION: '17'
 
 jobs:
   backup:
     name: Run Database Backup
+    if: >-
+      (github.event_name == 'schedule' && github.event.schedule == '0 2 * * *') ||
+      (github.event_name == 'workflow_dispatch' && inputs.job != 'verify-restore')
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -16,75 +43,115 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up environment
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends postgresql-client openssl gzip
-
-      - name: Run backup script
+      - name: Check configuration
+        id: config
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
           BACKUP_STORAGE_BUCKET: ${{ secrets.BACKUP_STORAGE_BUCKET }}
-          BACKUP_STORAGE_REGION: ${{ secrets.BACKUP_STORAGE_REGION }}
+        run: |
+          missing=()
+          [[ -n "$DATABASE_URL" ]] || missing+=(DATABASE_URL)
+          [[ -n "$BACKUP_ENCRYPTION_KEY" ]] || missing+=(BACKUP_ENCRYPTION_KEY)
+          [[ -n "$BACKUP_STORAGE_BUCKET" ]] || missing+=(BACKUP_STORAGE_BUCKET)
+          if (( ${#missing[@]} )); then
+            echo "::warning::Backup skipped: repository secrets not configured: ${missing[*]}. See docs/BACKUP-RESTORE.md."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install PostgreSQL client
+        if: steps.config.outputs.ready == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y --no-install-recommends "postgresql-client-${PG_CLIENT_VERSION}" gnupg gzip
+          pg_dump --version
+
+      - name: Run backup script
+        if: steps.config.outputs.ready == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          BACKUP_ENCRYPTION_METHOD: gpg
+          BACKUP_STORAGE_BUCKET: ${{ secrets.BACKUP_STORAGE_BUCKET }}
+          BACKUP_STORAGE_REGION: ${{ secrets.BACKUP_STORAGE_REGION || 'us-east-1' }}
           BACKUP_STORAGE_ACCESS_KEY_ID: ${{ secrets.BACKUP_STORAGE_ACCESS_KEY_ID }}
           BACKUP_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_STORAGE_SECRET_ACCESS_KEY }}
           BACKUP_STORAGE_ENDPOINT: ${{ secrets.BACKUP_STORAGE_ENDPOINT }}
-        run: |
-          set -euo pipefail
-          chmod +x scripts/backup.sh
-          scripts/backup.sh
+          SOROBAN_RPC_URL: ${{ vars.SOROBAN_RPC_URL }}
+          SOROBAN_NETWORK_PASSPHRASE: ${{ vars.SOROBAN_NETWORK_PASSPHRASE }}
+          SOROBAN_CONTRACT_IDS: ${{ vars.SOROBAN_CONTRACT_IDS }}
+          BACKUP_OUTPUT_DIR: backups
+          GIT_COMMIT: ${{ github.sha }}
+          ENVIRONMENT: production
+        run: bash scripts/backup.sh
 
       - name: Upload backup manifest
-        if: always()
+        if: always() && steps.config.outputs.ready == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: backup-manifest-${{ github.run_id }}
-          path: |
-            backups/*.manifest.json
-            backups/manifest.json
+          path: backups/*.json
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Fail job on backup error
-        if: failure()
-        run: |
-          echo "::error::Database backup failed. See logs above for details."
-          exit 1
-
   verify-restore:
     name: Verify Restore (Staging)
+    # With job=both, run after the backup so it verifies the fresh archive.
+    # always() keeps this job from being skipped when `backup` was skipped.
+    needs: [backup]
+    if: >-
+      always() && (
+        (github.event_name == 'schedule' && github.event.schedule == '0 4 * * 0') ||
+        (github.event_name == 'workflow_dispatch' && inputs.job != 'backup')
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    # Weekly on Sundays at 04:00 UTC
-    # Note: cron triggers are defined at the workflow level; this job runs
-    # whenever the workflow is triggered and is gated below to weekly runs.
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up environment
+      - name: Check configuration
+        id: config
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          BACKUP_STORAGE_BUCKET: ${{ secrets.BACKUP_STORAGE_BUCKET }}
+        run: |
+          missing=()
+          [[ -n "$STAGING_DATABASE_URL" ]] || missing+=(STAGING_DATABASE_URL)
+          [[ -n "$BACKUP_ENCRYPTION_KEY" ]] || missing+=(BACKUP_ENCRYPTION_KEY)
+          [[ -n "$BACKUP_STORAGE_BUCKET" ]] || missing+=(BACKUP_STORAGE_BUCKET)
+          if (( ${#missing[@]} )); then
+            echo "::warning::Restore verification skipped: repository secrets not configured: ${missing[*]}. See docs/BACKUP-RESTORE.md."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install PostgreSQL client
+        if: steps.config.outputs.ready == 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends postgresql-client openssl gzip
+          sudo apt-get install -y --no-install-recommends postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y --no-install-recommends "postgresql-client-${PG_CLIENT_VERSION}" gnupg gzip
+          psql --version
 
       - name: Run restore verification
+        if: steps.config.outputs.ready == 'true'
         env:
+          # The staging role needs CREATEDB: verification restores into a
+          # throwaway database that is dropped afterwards.
           DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
           BACKUP_STORAGE_BUCKET: ${{ secrets.BACKUP_STORAGE_BUCKET }}
-          BACKUP_STORAGE_REGION: ${{ secrets.BACKUP_STORAGE_REGION }}
+          BACKUP_STORAGE_REGION: ${{ secrets.BACKUP_STORAGE_REGION || 'us-east-1' }}
           BACKUP_STORAGE_ACCESS_KEY_ID: ${{ secrets.BACKUP_STORAGE_ACCESS_KEY_ID }}
           BACKUP_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_STORAGE_SECRET_ACCESS_KEY }}
           BACKUP_STORAGE_ENDPOINT: ${{ secrets.BACKUP_STORAGE_ENDPOINT }}
-        run: |
-          set -euo pipefail
-          chmod +x scripts/restore.sh
-          scripts/restore.sh --verify-only
-
-      - name: Notify on failure
-        if: failure()
-        run: |
-          echo "::error::Restore verification failed. Backups may not be restorable."
-          exit 1
+        run: bash scripts/restore.sh --verify-only
