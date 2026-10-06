@@ -49,6 +49,11 @@ jobs:
       # The Dockerfiles live here; the application source lives in sibling repos.
       - name: Checkout backend source
         uses: actions/checkout@v7
+        uses: actions/checkout@v4
+
+      # The Dockerfiles live here; the application source lives in sibling repos.
+      - name: Checkout backend source
+        uses: actions/checkout@v4
         with:
           repository: SynapsVault/backend
           ref: ${{ inputs.backend_ref || 'main' }}
@@ -56,6 +61,7 @@ jobs:
 
       - name: Checkout frontend source
         uses: actions/checkout@v7
+        uses: actions/checkout@v4
         with:
           repository: SynapsVault/frontend
           ref: ${{ inputs.frontend_ref || 'main' }}
@@ -73,6 +79,10 @@ jobs:
 
       - name: Log in to the container registry
         uses: docker/login-action@v4
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the container registry
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -80,6 +90,7 @@ jobs:
 
       - name: Build and push backend image
         uses: docker/build-push-action@v7
+        uses: docker/build-push-action@v6
         with:
           context: ./src/backend
           file: ./backend/Dockerfile
@@ -93,6 +104,7 @@ jobs:
 
       - name: Build and push backend migrate image
         uses: docker/build-push-action@v7
+        uses: docker/build-push-action@v6
         with:
           context: ./src/backend
           file: ./backend/Dockerfile
@@ -106,6 +118,7 @@ jobs:
 
       - name: Build and push frontend image
         uses: docker/build-push-action@v7
+        uses: docker/build-push-action@v6
         with:
           context: ./src/frontend
           file: ./frontend/Dockerfile
@@ -129,6 +142,7 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Check cluster credentials
         id: config
@@ -145,6 +159,7 @@ jobs:
       - name: Set up kubectl
         if: steps.config.outputs.ready == 'true'
         uses: azure/setup-kubectl@v5
+        uses: azure/setup-kubectl@v4
         with:
           version: v1.31.0
 

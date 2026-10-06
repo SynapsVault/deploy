@@ -26,6 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Install actionlint
         run: |
           curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
@@ -39,6 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Run shellcheck
         run: |
           shellcheck --version
@@ -52,6 +54,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -72,6 +76,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Install kubeconform
         run: |
           curl -sSfL "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
@@ -88,6 +93,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Install promtool and amtool
         run: |
           curl -sSfL "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" \
@@ -113,6 +119,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Validate with example env
         run: |
           cp .env.example .env
@@ -144,6 +151,15 @@ jobs:
       - uses: docker/setup-buildx-action@v4
       - name: Build ${{ matrix.name }}
         uses: docker/build-push-action@v7
+      - uses: actions/checkout@v4
+      - name: Checkout application source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repo }}
+          path: src
+      - uses: docker/setup-buildx-action@v3
+      - name: Build ${{ matrix.name }}
+        uses: docker/build-push-action@v6
         with:
           context: ./src
           file: ./${{ matrix.name == 'frontend' && 'frontend' || 'backend' }}/Dockerfile
