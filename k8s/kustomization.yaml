@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: default
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+  - hpa.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: app
+  app.kubernetes.io/managed-by: kustomize
+
+images:
+  - name: app
+    newName: app
+    newTag: latest
+  - name: app-worker
+    newName: app-worker
+    newTag: latest
