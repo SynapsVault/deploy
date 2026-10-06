@@ -1,0 +1,153 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ACTIONLINT_VERSION: '1.7.7'
+  KUBECONFORM_VERSION: '0.6.7'
+  PROMETHEUS_VERSION: '2.53.2'
+  ALERTMANAGER_VERSION: '0.27.0'
+
+jobs:
+  workflows:
+    name: Lint GitHub workflows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install actionlint
+        run: |
+          curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            | tar -xz -C /usr/local/bin actionlint
+      - name: Run actionlint
+        # actionlint also runs shellcheck on every `run:` block.
+        run: actionlint -color
+
+  shell:
+    name: Lint shell scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run shellcheck
+        run: |
+          shellcheck --version
+          shellcheck scripts/*.sh
+      - name: Check bash syntax
+        run: for f in scripts/*.sh; do bash -n "$f"; done
+
+  node:
+    name: Node scripts and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Syntax-check scripts
+        run: for f in scripts/*.js scripts/*.cjs; do node --check "$f"; done
+      - name: Unit tests
+        run: npm test
+      - name: CLI smoke tests
+        run: |
+          node scripts/deploy-contracts.cjs --help
+          node scripts/rollback-contracts.cjs --help
+          node scripts/01-generate-keypairs.js > /dev/null
+
+  kubernetes:
+    name: Validate Kubernetes manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install kubeconform
+        run: |
+          curl -sSfL "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar -xz -C /usr/local/bin kubeconform
+      - name: Render kustomization
+        run: kubectl kustomize k8s/ > rendered.yaml
+      - name: Validate rendered manifests
+        run: kubeconform -strict -summary rendered.yaml
+      - name: Validate secret template
+        run: kubeconform -strict -summary k8s/secrets.yaml
+
+  monitoring:
+    name: Validate monitoring config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install promtool and amtool
+        run: |
+          curl -sSfL "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" \
+            | tar -xz --strip-components=1 -C /usr/local/bin "prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool"
+          curl -sSfL "https://github.com/prometheus/alertmanager/releases/download/v${ALERTMANAGER_VERSION}/alertmanager-${ALERTMANAGER_VERSION}.linux-amd64.tar.gz" \
+            | tar -xz --strip-components=1 -C /usr/local/bin "alertmanager-${ALERTMANAGER_VERSION}.linux-amd64/amtool"
+      - name: Check alert rules
+        run: promtool check rules monitoring/alert-rules.yml
+      - name: Check Prometheus config
+        # prometheus.yml references the rules at their in-container path.
+        run: |
+          mkdir -p /tmp/prom
+          cp monitoring/alert-rules.yml /tmp/prom/
+          sed 's#/etc/prometheus/alert-rules.yml#alert-rules.yml#' monitoring/prometheus.yml > /tmp/prom/prometheus.yml
+          promtool check config /tmp/prom/prometheus.yml
+      - name: Check Alertmanager config
+        run: amtool check-config monitoring/alertmanager.yml
+      - name: Check Grafana dashboard JSON
+        run: python3 -m json.tool monitoring/grafana-dashboard.json > /dev/null
+
+  compose:
+    name: Validate docker-compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate with example env
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+
+  docker:
+    name: Build images
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            repo: SynapsVault/backend
+            target: runtime
+          - name: backend-migrate
+            repo: SynapsVault/backend
+            target: migrate
+          - name: frontend
+            repo: SynapsVault/frontend
+            target: runtime
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout application source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repo }}
+          path: src
+      - uses: docker/setup-buildx-action@v3
+      - name: Build ${{ matrix.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ./src
+          file: ./${{ matrix.name == 'frontend' && 'frontend' || 'backend' }}/Dockerfile
+          target: ${{ matrix.target }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}

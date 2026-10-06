@@ -9,36 +9,52 @@ The following data is backed up:
 | Component | Description | Backup Method |
 | --- | --- | --- |
 | PostgreSQL database | Primary application database (users, transactions, metadata) | `pg_dump` logical backup |
-| Contract state | On-chain contract state snapshots and deployment artifacts | State export script + artifact archive |
-| Configuration | Environment configuration and secrets references (not secret values) | Config snapshot |
+| Contract state | Soroban RPC snapshots of configured contract instances | `getContractData` via `scripts/backup.sh` |
 
 > **Note:** Secret values are **not** included in backups. Secrets are managed separately via the secrets manager and must be re-provisioned during restore.
 
 ## 2. Backup Schedule
 
-| Backup Type | Frequency | Retention | Storage Location |
-| --- | --- | --- | --- |
-| Full Postgres backup | Daily at 02:00 UTC | 30 days | `s3://<backup-bucket>/postgres/full/` |
-| Incremental Postgres backup | Every 6 hours | 7 days | `s3://<backup-bucket>/postgres/incremental/` |
-| Contract state snapshot | Daily at 02:30 UTC | 90 days | `s3://<backup-bucket>/contract-state/` |
-| Config snapshot | On change | 90 days | `s3://<backup-bucket>/config/` |
+| Job | Schedule | What it does |
+| --- | --- | --- |
+| Backup | Daily at 02:00 UTC | `scripts/backup.sh`: `pg_dump` + contract state snapshot → encrypted archive + manifest in object storage |
+| Restore verification | Sundays at 04:00 UTC | `scripts/restore.sh --verify-only` against staging: restores the newest backup into a throwaway database and checks every table came back |
 
-Backups are orchestrated by the workflow defined in [`.github/workflows/backup.yml`](../.github/workflows/backup.yml).
+Both run from [`.github/workflows/backup.yml`](../.github/workflows/backup.yml) and can also be started manually (**Run workflow** → `backup`, `verify-restore` or `both`). Until the required secrets are configured, the jobs are skipped with a warning instead of failing.
+
+### Required configuration
+
+Repository secrets:
+
+| Secret | Used by | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | backup | Production database to dump |
+| `STAGING_DATABASE_URL` | verify-restore | Staging database; the role needs `CREATEDB` |
+| `BACKUP_ENCRYPTION_KEY` | both | gpg passphrase used to encrypt/decrypt archives |
+| `BACKUP_STORAGE_BUCKET` | both | Bucket name |
+| `BACKUP_STORAGE_ACCESS_KEY_ID`, `BACKUP_STORAGE_SECRET_ACCESS_KEY` | both | S3-compatible credentials |
+| `BACKUP_STORAGE_REGION` | both | Optional, default `us-east-1` |
+| `BACKUP_STORAGE_ENDPOINT` | both | Optional, for non-AWS S3 (R2, MinIO, Supabase's S3 endpoint, ...) |
+
+Optional repository variables for the contract-state snapshot: `SOROBAN_RPC_URL`, `SOROBAN_NETWORK_PASSPHRASE`, `SOROBAN_CONTRACT_IDS` (comma-separated).
+
+### Backup layout
+
+Each run writes two objects under `s3://<bucket>/backups/`:
+
+- `soroban-backup-<UTC timestamp>.tar.gz.enc` — encrypted tarball containing `database.sql.gz` (plain SQL with `DROP ... IF EXISTS`), `tables.txt` (table list used for verification) and `contracts/` (contract state snapshots, when configured).
+- `soroban-backup-<UTC timestamp>.manifest.json` — timestamp, SHA-256 of the encrypted archive, size, encryption method and source metadata. A copy is uploaded as a workflow artifact.
 
 ## 3. Retention Policy
 
-- **Daily full backups:** retained for 30 days, then automatically expired.
-- **Incremental backups:** retained for 7 days.
-- **Contract state snapshots:** retained for 90 days to support audit and rollback requirements.
-- **Config snapshots:** retained for 90 days.
-- Retention is enforced by the lifecycle policy on the backup bucket and by the cleanup step in the backup workflow.
+- Backups are retained according to the lifecycle policy on the backup bucket (recommended: 30 days for daily backups). The scripts never delete old backups.
+- Workflow artifacts (manifests) are kept for 30 days.
 
 ## 4. Encryption
 
-- All backups are encrypted at rest using **AES-256** (SSE-S3 or SSE-KMS, depending on environment).
-- Backups are encrypted in transit using **TLS 1.2+**.
-- Encryption keys are managed by the cloud KMS. Key rotation follows the platform KMS rotation schedule.
-- Access to the backup bucket is restricted to the backup service role and on-call engineers via least-privilege IAM policies.
+- Archives are encrypted client-side before upload: with gpg (AES-256, symmetric passphrase from `BACKUP_ENCRYPTION_KEY`) by default, or with [age](https://age-encryption.org) when `BACKUP_ENCRYPTION_KEY` is an `age1...` recipient or a recipients file. `backup.sh` refuses to fall back to unencrypted uploads; plaintext requires an explicit `BACKUP_ENCRYPTION_METHOD=none`.
+- Uploads use TLS. Enable server-side encryption on the bucket as an additional layer.
+- Access to the backup bucket should be restricted to the backup credentials and on-call engineers via least-privilege policies.
 
 ## 5. Storage Locations
 
@@ -48,86 +64,75 @@ Backups are orchestrated by the workflow defined in [`.github/workflows/backup.y
 | Staging | `s3://staging-backups-<org>/` | `us-east-1` |
 | Development | `s3://dev-backups-<org>/` | `us-east-1` |
 
-Cross-region replication is enabled for production backups to `us-west-2` for disaster recovery.
-
 ## 6. RTO / RPO Targets
 
 | Metric | Target | Notes |
 | --- | --- | --- |
-| **RPO** (Recovery Point Objective) | 6 hours | Maximum acceptable data loss |
+| **RPO** (Recovery Point Objective) | 24 hours | One full backup per day |
 | **RTO** (Recovery Time Objective) | 4 hours | Maximum acceptable downtime |
 
-These targets assume the most recent incremental backup is available and the restore environment is provisioned.
+For a tighter RPO, use your database provider's point-in-time recovery (e.g. Supabase PITR) alongside these logical backups.
 
 ## 7. Restore Procedure
 
 ### 7.1 Prerequisites
 
-- Access to the backup bucket (IAM role or credentials).
+- `aws` CLI, `psql`, `gpg` (or `age`), `tar`, `gzip`, `sha256sum`.
+- Access to the backup bucket and the encryption key.
 - A target PostgreSQL instance with sufficient capacity.
-- The restore script: [`scripts/restore.sh`](../scripts/restore.sh).
-- The latest backup manifest (produced by the backup workflow).
+
+`scripts/restore.sh` reads the same `BACKUP_STORAGE_*` and `BACKUP_ENCRYPTION_KEY` variables as `backup.sh` (for age-encrypted backups, set `BACKUP_AGE_IDENTITY_FILE` instead).
 
 ### 7.2 Steps
 
 1. **Identify the backup to restore.**
    ```bash
-   aws s3 ls s3://<backup-bucket>/postgres/full/ | tail -n 5
+   aws s3 ls s3://<backup-bucket>/backups/ | grep manifest | tail -n 5
    ```
-   Select the most recent full backup that precedes the incident, plus any incremental backups after it.
+   Pick the newest backup that precedes the incident. If you omit `--backup`, `restore.sh` uses the newest one.
 
-2. **Provision the target database.**
-   Ensure the target instance is running and reachable. Confirm the connection string in the environment configuration.
-
-3. **Download the backup artifacts.**
+2. **Rehearse against a scratch database (recommended).**
    ```bash
-   ./scripts/restore.sh download --bucket <backup-bucket> --date <YYYY-MM-DD>
+   ./scripts/restore.sh --backup soroban-backup-<timestamp> --verify-only \
+     --database-url postgresql://<user>:<pass>@<staging-host>:5432/postgres
    ```
 
-4. **Restore the full backup.**
+3. **Restore into the target database.**
    ```bash
-   ./scripts/restore.sh restore-full --file <full-backup-file>
+   ./scripts/restore.sh --backup soroban-backup-<timestamp> --database-url "$DATABASE_URL"
    ```
+   The script downloads the manifest and archive, verifies the SHA-256 checksum, decrypts, and replays the dump in a single transaction (a failed restore changes nothing). Objects in the target that are not in the backup are left in place.
 
-5. **Apply incremental backups (if applicable).**
+4. **Inspect contract state snapshots (if needed).** Add `--keep-work-dir` to keep the extracted `contracts/` snapshots. On-chain state cannot be "restored"; use the snapshots to confirm which contract IDs the application should point at, and use `scripts/rollback-contracts.cjs` to repoint it.
+
+5. **Re-provision secrets.** Retrieve the required secrets from the secrets manager and inject them into the restored environment. Do **not** restore secrets from backups.
+
+6. **Run migrations (if the backup predates the current release).** The Kubernetes `migrate` initContainer does this on the next rollout, or run it manually:
    ```bash
-   ./scripts/restore.sh restore-incremental --file <incremental-backup-file>
+   kubectl -n synapsvault rollout restart deployment/backend
    ```
 
-6. **Restore contract state.**
-   ```bash
-   ./scripts/restore.sh restore-contract-state --snapshot <snapshot-id>
-   ```
-
-7. **Re-provision secrets.**
-   Retrieve the required secrets from the secrets manager and inject them into the restored environment. Do **not** restore secrets from backups.
-
-8. **Run migrations (if needed).**
-   ```bash
-   npm run migrate
-   ```
-
-9. **Restart application services.**
-   Deploy or restart the application against the restored database.
+7. **Restart application services** against the restored database.
 
 ### 7.3 Verification
 
 After restore, verify the following:
 
-- [ ] Database connectivity is healthy (`npm run db:health`).
-- [ ] Row counts for critical tables match the backup manifest.
-- [ ] Contract state matches the expected on-chain state (compare hashes).
-- [ ] Application smoke tests pass (`npm run test:smoke`).
+- [ ] `restore.sh` finished with `restore complete` (exit code 0).
+- [ ] Row counts for critical tables look plausible (`--verify-only` logs counts for every table).
+- [ ] The application's `/health` endpoint reports healthy.
+- [ ] Smoke tests pass (`BACKEND_URL=... npm run test:smoke`).
 - [ ] No errors in application logs for 15 minutes post-restore.
 - [ ] RTO/RPO targets were met (record actual times).
 
 ### 7.4 Rollback
 
-If the restore fails or produces inconsistent data, roll back to the previous database instance and re-attempt with an earlier backup. Document the failure and notify the on-call engineer.
+If the restore fails, `restore.sh` rolls its transaction back and exits non-zero (2 = download/checksum, 3 = decryption, 4 = restore, 5 = verification). Fix the cause and re-run, or re-attempt with an earlier backup. Document the failure and notify the on-call engineer.
 
 ## 8. Testing
 
-- Restore drills are performed **quarterly** in the staging environment.
+- Restores are verified automatically **weekly** against staging by the `verify-restore` job.
+- Full restore drills are performed **quarterly** in the staging environment.
 - Drill results (time to restore, issues encountered) are recorded in the incident log.
 - Any gaps identified during drills must be addressed before the next drill.
 
@@ -153,5 +158,5 @@ If the restore fails or produces inconsistent data, roll back to the previous da
 - Backup workflow: [`.github/workflows/backup.yml`](../.github/workflows/backup.yml)
 - Restore script: [`scripts/restore.sh`](../scripts/restore.sh)
 - Backup script: [`scripts/backup.sh`](../scripts/backup.sh)
-- Incident response runbook: [`docs/INCIDENT-RESPONSE.md`](./INCIDENT-RESPONSE.md)
-- Secrets management: [`docs/SECRETS.md`](./SECRETS.md)
+- Database migration rollback: [`docs/DATABASE-ROLLBACK.md`](./DATABASE-ROLLBACK.md)
+- Environment variables: [`docs/ENVIRONMENT-VARIABLES.md`](./ENVIRONMENT-VARIABLES.md)

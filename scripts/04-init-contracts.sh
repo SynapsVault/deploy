@@ -6,8 +6,7 @@
 #   export DEPLOYER_SECRET=S...
 #   export BACKEND_PUBLIC=G...   (the backend platform wallet public key)
 #
-# The vault-registry has no init() — it's ready after deploy.
-# access-lease and subscription require init(admin) where admin = BACKEND_PUBLIC.
+# All three contracts expose init(admin); admin = BACKEND_PUBLIC.
 
 set -euo pipefail
 
@@ -17,12 +16,32 @@ set -euo pipefail
 : "${DEPLOYER_SECRET:? export DEPLOYER_SECRET}"
 : "${BACKEND_PUBLIC:?  export BACKEND_PUBLIC}"
 
-soroban keys add deployer --secret-key "$DEPLOYER_SECRET" 2>/dev/null || true
+if command -v stellar >/dev/null 2>&1; then
+  CLI=stellar
+elif command -v soroban >/dev/null 2>&1; then
+  CLI=soroban
+else
+  echo "❌  Neither the stellar nor the soroban CLI is installed."
+  exit 1
+fi
+
+printf '%s\n' "$DEPLOYER_SECRET" | $CLI keys add deployer --secret-key 2>/dev/null || true
+
+# ── Init vault-registry ───────────────────────────────────────────────────────
+echo ""
+echo "▸ Initialising vault-registry (admin = BACKEND_PUBLIC)…"
+$CLI contract invoke \
+  --id      "$vault_registry" \
+  --source  deployer \
+  --network testnet \
+  -- init \
+  --admin "$BACKEND_PUBLIC"
+echo "✅ vault-registry initialised"
 
 # ── Init access-lease ─────────────────────────────────────────────────────────
 echo ""
 echo "▸ Initialising access-lease (admin = BACKEND_PUBLIC)…"
-soroban contract invoke \
+$CLI contract invoke \
   --id      "$access_lease" \
   --source  deployer \
   --network testnet \
@@ -33,7 +52,7 @@ echo "✅ access-lease initialised"
 # ── Init subscription ─────────────────────────────────────────────────────────
 echo ""
 echo "▸ Initialising subscription manager (admin = BACKEND_PUBLIC)…"
-soroban contract invoke \
+$CLI contract invoke \
   --id      "$subscription" \
   --source  deployer \
   --network testnet \
@@ -44,7 +63,7 @@ echo "✅ subscription initialised"
 # ── Verify vault-registry (just read count) ───────────────────────────────────
 echo ""
 echo "▸ Verifying vault-registry…"
-COUNT=$(soroban contract invoke \
+COUNT=$($CLI contract invoke \
   --id      "$vault_registry" \
   --source  deployer \
   --network testnet \

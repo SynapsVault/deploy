@@ -10,7 +10,9 @@
     "step4": "bash scripts/04-init-contracts.sh",
     "step5": "node scripts/05-seed-catalog.js",
     "step6": "node scripts/06-smoke-test.js",
-    "deploy": "npm run step1 && npm run step2 && npm run step3 && npm run step4",
+    "deploy:contracts": "node scripts/deploy-contracts.cjs",
+    "rollback:contracts": "node scripts/rollback-contracts.cjs",
+    "test": "node --test \"test/**/*.test.cjs\"",
     "test:smoke": "node scripts/06-smoke-test.js"
   },
   "keywords": [
@@ -23,7 +25,7 @@
   "author": "SynapsVault Team",
   "license": "MIT",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.12.0"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^17.2.1"

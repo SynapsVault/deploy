@@ -31,4 +31,4 @@ if (keys.length === 0) {
 console.log(`\nFunding ${keys.length} account(s) on Stellar testnet…\n`);
 for (const k of keys) await fund(k);
 console.log("\nNext → build + deploy contracts:");
-console.log("  node scripts/03-deploy-contracts.js\n");
+console.log("  bash scripts/03-deploy-contracts.sh\n");
