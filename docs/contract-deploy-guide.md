@@ -2,6 +2,49 @@
 
 Run these steps **once locally** from your machine. Takes ~20 minutes total.
 
+> **Preferred path:** use the automated scripts `scripts/deploy-contracts.js` and
+> `scripts/rollback-contracts.js`. The manual `soroban-cli` steps below are kept as a
+> fallback for debugging or when the scripts are unavailable.
+
+---
+
+## Automated deployment (preferred)
+
+```bash
+# Deploy all contracts (builds WASM, deploys, initialises, writes contract-ids.env)
+node scripts/deploy-contracts.js --network testnet
+
+# Roll back to the previous deployment if something goes wrong
+node scripts/rollback-contracts.js --network testnet
+```
+
+The deploy script performs pre-flight checks, deploys `vault-registry`,
+`access-lease` and `subscription`, initialises them, and writes the resulting
+contract IDs to `contract-ids.env`. The rollback script restores the contract IDs
+and WASM hashes from the last known-good deployment.
+
+---
+
+## Mainnet deployment safety checks
+
+Before deploying to mainnet, the automated script runs a set of pre-flight checks
+and requires explicit confirmation:
+
+- **Network guard** — refuses to run against mainnet unless `--network mainnet`
+  is passed explicitly; defaults to testnet.
+- **Keypair validation** — verifies the deployer secret key is present, well-formed,
+  and matches the expected public key.
+- **Balance check** — confirms the deployer account holds enough XLM to cover
+  upload and deployment fees.
+- **WASM hash check** — builds the contracts and compares the resulting WASM hashes
+  against the recorded hashes to detect unintended changes.
+- **Contract ID check** — warns if any target contract ID already exists on-chain.
+- **Confirmation prompt** — prints a summary of the network, deployer, contract IDs
+  and WASM hashes, then requires you to type `yes` to proceed. Any other input aborts
+  the deployment.
+
+Only proceed once every check passes and you have reviewed the printed summary.
+
 ---
 
 ## Prerequisites (install once)
@@ -50,7 +93,10 @@ Check balances at: https://stellar.expert/explorer/testnet
 
 ---
 
-## Step 3 — Build + deploy contracts
+## Step 3 — Build + deploy contracts (manual fallback)
+
+> Prefer `node scripts/deploy-contracts.js` (see above). Use the manual steps below
+> only if the automated script is unavailable.
 
 ```bash
 export DEPLOYER_SECRET=Syour_deployer_secret_key_here

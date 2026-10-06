@@ -22,6 +22,57 @@ Step 9  Smoke test                 (5 min)
 Step 10 Record demo video          (30 min)
 ```
 
+For local development, production Kubernetes deployment, database rollback,
+and automated contract deployment, see the dedicated sections below.
+
+---
+
+## Local Development (Docker Compose)
+
+Bring up the full stack locally with Docker Compose:
+
+```bash
+docker compose up
+```
+
+Service URLs:
+
+| Service  | URL                     |
+|----------|-------------------------|
+| Frontend | http://localhost:5173   |
+| Backend  | http://localhost:3000   |
+| Postgres | localhost:5432          |
+
+Run database migrations against the local stack:
+
+```bash
+docker compose exec backend pnpm drizzle-kit migrate
+```
+
+---
+
+## Production Deployment (Kubernetes)
+
+Production deployments run on Kubernetes. Manifests live in [`k8s/`](./k8s/)
+and the full runbook is in
+[docs/DEPLOY-KUBERNETES.md](./docs/DEPLOY-KUBERNETES.md).
+
+---
+
+## Database Rollback
+
+If a migration needs to be reverted, follow
+[docs/DATABASE-ROLLBACK.md](./docs/DATABASE-ROLLBACK.md).
+
+---
+
+## Automated Contract Deployment
+
+Contracts are deployed automatically via
+[`scripts/deploy-contracts.js`](./scripts/deploy-contracts.js) and the
+`deploy-contracts` GitHub Actions workflow. See the workflow definition in
+[`.github/workflows/`](./.github/workflows/) for triggers and required secrets.
+
 ---
 
 ## Prerequisites
@@ -178,5 +229,7 @@ recovery procedures.
 
 See [docs/contract-deploy-guide.md](./docs/contract-deploy-guide.md) for contract issues.
 See [docs/railway-deploy.md](./docs/railway-deploy.md) for backend issues.
+See [docs/DEPLOY-KUBERNETES.md](./docs/DEPLOY-KUBERNETES.md) for Kubernetes deployment issues.
+See [docs/DATABASE-ROLLBACK.md](./docs/DATABASE-ROLLBACK.md) for database rollback procedures.
 
 For SCF questions: Stellar Dev Discord → #scf-general

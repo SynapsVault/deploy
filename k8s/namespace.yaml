@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: synapsvault
+  labels:
+    app.kubernetes.io/name: synapsvault
+    app.kubernetes.io/part-of: synapsvault
+    environment: production
+  annotations:
+    description: "SynapsVault production namespace"
