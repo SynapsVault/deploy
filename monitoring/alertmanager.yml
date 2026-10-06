@@ -1,0 +1,31 @@
+# Minimal Alertmanager config. Alerts are grouped and routed to a single
+# receiver; replace the webhook URL (or add Slack/PagerDuty/email receivers)
+# for real notifications. See https://prometheus.io/docs/alerting/latest/configuration/
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: default
+  group_by: ['alertname', 'job']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers:
+        - severity="critical"
+      receiver: default
+      repeat_interval: 1h
+
+receivers:
+  - name: default
+    webhook_configs:
+      - url: 'http://localhost:9095/alerts'
+        send_resolved: true
+
+inhibit_rules:
+  # Don't page for warnings when the matching critical alert is already firing.
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
+    equal: ['alertname', 'job']

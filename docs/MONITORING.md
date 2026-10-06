@@ -47,7 +47,7 @@ Prometheus scrapes metrics over HTTP. The backend must expose a metrics endpoint
 1. Ensure the backend exposes the metrics endpoint. Confirm it responds:
 
    ```bash
-   curl -s http://localhost:8080/metrics | head
+   curl -s http://localhost:3000/metrics | head
    ```
 
    You should see lines such as `# HELP ...` and `# TYPE ...` followed by metric samples.
@@ -59,11 +59,11 @@ Prometheus scrapes metrics over HTTP. The backend must expose a metrics endpoint
      - job_name: "backend"
        metrics_path: /metrics
        static_configs:
-         - targets: ["backend:8080"]   # host:port of the backend metrics endpoint
+         - targets: ["backend:3000"]   # host:port of the backend metrics endpoint
    ```
 
-   - If Prometheus runs in Docker Compose on the same network, use the service name (e.g. `backend:8080`).
-   - If Prometheus runs outside the backend's network, use a reachable host/IP (e.g. `host.docker.internal:8080` on Docker Desktop, or the backend's public address).
+   - If Prometheus runs in Docker Compose on the same network, use the service name (e.g. `backend:3000`).
+   - If Prometheus runs outside the backend's network, use a reachable host/IP (e.g. `host.docker.internal:3000` on Docker Desktop, or the backend's public address).
 
 3. If the metrics endpoint requires authentication, add credentials to the scrape config:
 
@@ -267,7 +267,7 @@ docker compose restart alertmanager
 
 ## Troubleshooting
 
-- **Target is `DOWN`**: verify the metrics endpoint is reachable from the Prometheus container (`docker compose exec prometheus wget -qO- http://backend:8080/metrics`). Check host/port and network configuration.
+- **Target is `DOWN`**: verify the metrics endpoint is reachable from the Prometheus container (`docker compose exec prometheus wget -qO- http://backend:3000/metrics`). Check host/port and network configuration.
 - **No data in Grafana**: confirm the data source URL is correct and that Prometheus has scraped data (**Prometheus → Graph**, query `up`).
 - **Rules not loading**: check the `rule_files` path and that the file is mounted into the container. Inspect Prometheus logs: `docker compose logs prometheus`.
 - **Alerts not delivered**: check Alertmanager logs (`docker compose logs alertmanager`) and confirm the receiver config, webhook URL, and SMTP credentials are correct.

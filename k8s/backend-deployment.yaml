@@ -19,36 +19,50 @@ spec:
       labels:
         app: backend
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
+        # Applies pending Drizzle migrations before the new version starts.
         - name: migrate
-          image: myregistry/backend:latest
+          image: backend-migrate
           imagePullPolicy: IfNotPresent
-          command: ["sh", "-c", "python manage.py migrate --noinput"]
           envFrom:
             - configMapRef:
                 name: backend-config
             - secretRef:
                 name: backend-secret
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           resources:
             requests:
               cpu: "100m"
               memory: "128Mi"
             limits:
               cpu: "500m"
-              memory: "256Mi"
+              memory: "512Mi"
       containers:
         - name: backend
-          image: myregistry/backend:latest
+          image: backend
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
-              containerPort: 8000
+              containerPort: 3000
               protocol: TCP
           envFrom:
             - configMapRef:
                 name: backend-config
             - secretRef:
                 name: backend-secret
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           livenessProbe:
             httpGet:
               path: /health

@@ -1,54 +1,88 @@
 # Backend Dockerfile
-# Multi-stage build for the Node.js/TypeScript backend service.
+# Multi-stage build for the SynapsVault Node.js/TypeScript backend
+# (https://github.com/SynapsVault/backend). The build context is a checkout of
+# that repository; this file lives in the deploy repo.
+#
+# Targets:
+#   runtime (default)  API server: node dist/index.js on $PORT (3000)
+#   migrate            One-shot Drizzle migrations (used as a k8s initContainer)
 
-# ---------- Stage 1: Dependencies ----------
-FROM node:20-alpine AS deps
+ARG NODE_VERSION=22
+# The backend's dependency tree has unresolved peer conflicts (e.g.
+# x402-stellar wants @stellar/stellar-sdk@^12 while the app uses ^15), so npm
+# needs --legacy-peer-deps until that is fixed upstream. Override with
+# --build-arg NPM_FLAGS= once it is.
+ARG NPM_FLAGS=--legacy-peer-deps
+
+# ---------- Stage 1: All dependencies (build + migrate tooling) ----------
+FROM node:${NODE_VERSION}-alpine AS deps
+ARG NPM_FLAGS
 WORKDIR /app
 
-# Install build tooling needed for native modules
+# Build tooling for any native modules
 RUN apk add --no-cache python3 make g++
 
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev && \
-    cp -R node_modules /prod_node_modules && \
-    npm ci
+# Skip lifecycle scripts: the postinstall symlinks packages/registry-client,
+# which is not copied yet. It is vendored explicitly below instead.
+# `npm ci` needs a committed lockfile; fall back to `npm install` without one.
+RUN if [ -f package-lock.json ]; then npm ci --ignore-scripts ${NPM_FLAGS}; \
+    else npm install --ignore-scripts --no-audit --no-fund ${NPM_FLAGS}; fi
 
-# ---------- Stage 2: Build ----------
-FROM node:20-alpine AS build
+# ---------- Stage 2: Production-only dependencies ----------
+FROM node:${NODE_VERSION}-alpine AS prod-deps
+ARG NPM_FLAGS
+WORKDIR /app
+
+RUN apk add --no-cache python3 make g++
+
+COPY package.json package-lock.json* ./
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev --ignore-scripts ${NPM_FLAGS}; \
+    else npm install --omit=dev --ignore-scripts --no-audit --no-fund ${NPM_FLAGS}; fi
+
+COPY packages/registry-client ./packages/registry-client
+RUN mkdir -p node_modules/@synapsvault && \
+    cp -R packages/registry-client node_modules/@synapsvault/registry-client
+
+# ---------- Stage 3: Build ----------
+FROM node:${NODE_VERSION}-alpine AS build
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-RUN npm run build
+RUN mkdir -p node_modules/@synapsvault && \
+    rm -rf node_modules/@synapsvault/registry-client && \
+    cp -R packages/registry-client node_modules/@synapsvault/registry-client
 
-# ---------- Stage 3: Runtime ----------
-FROM node:20-alpine AS runtime
+# The upstream build script tolerates type errors (`|| true`), so fail here if
+# it did not actually produce the server entrypoint.
+RUN npm run build && test -f dist/index.js
+
+# ---------- Target: migrate ----------
+FROM build AS migrate
+ENV NODE_ENV=production
+USER node
+CMD ["npx", "--no-install", "drizzle-kit", "migrate"]
+
+# ---------- Target: runtime (default) ----------
+FROM node:${NODE_VERSION}-alpine AS runtime
 WORKDIR /app
 
 ENV NODE_ENV=production \
     PORT=3000
 
-# Install curl for the healthcheck
-RUN apk add --no-cache curl
-
 # Copy production dependencies and compiled output
-COPY --from=deps /prod_node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/migrations ./migrations
+COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/dist ./dist
+COPY --from=build --chown=node:node /app/package.json ./package.json
 
-# Create a non-root user and give it ownership of the app directory
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S -u 1001 -G nodejs nodejs && \
-    chown -R nodejs:nodejs /app
-
-USER nodejs
+# Run as the unprivileged user that ships with the node image
+USER node
 
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -fsS http://localhost:3000/health || exit 1
+    CMD wget -qO- "http://127.0.0.1:${PORT}/health" >/dev/null || exit 1
 
-# Run migrations, then start the compiled server
-CMD ["sh", "-c", "npm run migrate && node dist/server.js"]
+CMD ["node", "dist/index.js"]

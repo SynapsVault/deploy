@@ -1,25 +1,34 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: default
+namespace: synapsvault
 
+# secrets.yaml is intentionally NOT listed: it is a template with placeholder
+# values, and applying it on every deploy would overwrite the real secret.
+# Create `backend-secret` out-of-band (see docs/DEPLOY-KUBERNETES.md).
 resources:
   - namespace.yaml
   - configmap.yaml
-  - secret.yaml
-  - deployment.yaml
-  - service.yaml
+  - backend-deployment.yaml
+  - backend-service.yaml
+  - frontend-deployment.yaml
   - ingress.yaml
-  - hpa.yaml
 
-commonLabels:
-  app.kubernetes.io/part-of: app
-  app.kubernetes.io/managed-by: kustomize
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: synapsvault
+      app.kubernetes.io/managed-by: kustomize
+    # Selectors are immutable on existing Deployments; don't touch them.
+    includeSelectors: false
 
+# CI pins these to the commit SHA with `kustomize edit set image`.
 images:
-  - name: app
-    newName: app
+  - name: backend
+    newName: ghcr.io/synapsvault/deploy/backend
     newTag: latest
-  - name: app-worker
-    newName: app-worker
+  - name: backend-migrate
+    newName: ghcr.io/synapsvault/deploy/backend-migrate
+    newTag: latest
+  - name: frontend
+    newName: ghcr.io/synapsvault/deploy/frontend
     newTag: latest
