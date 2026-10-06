@@ -34,7 +34,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Serve static assets via nginx
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.31-alpine AS runtime
 
 # Replace the default server with the app's config (SPA fallback, caching,
 # security headers) from the frontend repository.
