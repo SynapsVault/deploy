@@ -156,6 +156,18 @@ Then submit the interest form at: https://communityfund.stellar.org/awards
 
 ---
 
+## Monitoring & Alerting
+
+See [docs/MONITORING.md](./docs/MONITORING.md) for the monitoring and alerting
+runbook — health checks, dashboards, alert thresholds, and on-call procedures.
+
+## Environment Variables
+
+See [docs/ENVIRONMENT-VARIABLES.md](./docs/ENVIRONMENT-VARIABLES.md) for the
+full reference of backend, frontend, and contract environment variables.
+
+---
+
 ## Troubleshooting
 
 See [docs/contract-deploy-guide.md](./docs/contract-deploy-guide.md) for contract issues.

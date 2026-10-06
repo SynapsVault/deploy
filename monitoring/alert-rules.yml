@@ -1,0 +1,236 @@
+groups:
+  - name: backend-availability
+    rules:
+      - alert: BackendDown
+        expr: up{job="backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "Backend instance {{ $labels.instance }} is down"
+          description: "Backend target {{ $labels.instance }} (job {{ $labels.job }}) has been unreachable for more than 1 minute."
+          runbook_url: "https://docs.example.com/runbooks/backend-down"
+
+      - alert: BackendTargetMissing
+        expr: absent(up{job="backend"})
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "No backend targets are being scraped"
+          description: "Prometheus has not scraped any backend targets for more than 5 minutes. The service may be removed from service discovery."
+          runbook_url: "https://docs.example.com/runbooks/backend-down"
+
+  - name: http-errors
+    rules:
+      - alert: HighHttp5xxErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{job="backend", status=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{job="backend"}[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "High HTTP 5xx error rate ({{ $value | humanizePercentage }})"
+          description: "More than 5% of backend HTTP requests have returned 5xx responses over the last 5 minutes."
+          runbook_url: "https://docs.example.com/runbooks/http-5xx"
+
+      - alert: ElevatedHttp5xxErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{job="backend", status=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{job="backend"}[5m]))
+          ) > 0.01
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "Elevated HTTP 5xx error rate ({{ $value | humanizePercentage }})"
+          description: "More than 1% of backend HTTP requests have returned 5xx responses over the last 10 minutes."
+          runbook_url: "https://docs.example.com/runbooks/http-5xx"
+
+      - alert: HighHttp4xxErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{job="backend", status=~"4.."}[5m]))
+            /
+            sum(rate(http_requests_total{job="backend"}[5m]))
+          ) > 0.25
+        for: 15m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "High HTTP 4xx error rate ({{ $value | humanizePercentage }})"
+          description: "More than 25% of backend HTTP requests have returned 4xx responses over the last 15 minutes."
+          runbook_url: "https://docs.example.com/runbooks/http-4xx"
+
+  - name: http-latency
+    rules:
+      - alert: HighHttpLatencyP95
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(http_request_duration_seconds_bucket{job="backend"}[5m])) by (le)
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "High HTTP p95 latency ({{ $value | humanizeDuration }})"
+          description: "The 95th percentile backend HTTP request latency has exceeded 1s for more than 10 minutes."
+          runbook_url: "https://docs.example.com/runbooks/http-latency"
+
+      - alert: CriticalHttpLatencyP99
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum(rate(http_request_duration_seconds_bucket{job="backend"}[5m])) by (le)
+          ) > 3
+        for: 10m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "Critical HTTP p99 latency ({{ $value | humanizeDuration }})"
+          description: "The 99th percentile backend HTTP request latency has exceeded 3s for more than 10 minutes."
+          runbook_url: "https://docs.example.com/runbooks/http-latency"
+
+  - name: database
+    rules:
+      - alert: DatabaseConnectionFailures
+        expr: |
+          sum(rate(db_connection_errors_total{job="backend"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "Database connection failures detected"
+          description: "The backend is experiencing database connection errors at a rate of {{ $value | humanize }}/s over the last 5 minutes."
+          runbook_url: "https://docs.example.com/runbooks/database-connection"
+
+      - alert: DatabaseConnectionPoolExhausted
+        expr: |
+          (
+            db_connection_pool_in_use{job="backend"}
+            /
+            db_connection_pool_max{job="backend"}
+          ) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "Database connection pool nearly exhausted ({{ $value | humanizePercentage }})"
+          description: "More than 90% of the backend database connection pool has been in use for over 5 minutes."
+          runbook_url: "https://docs.example.com/runbooks/database-connection"
+
+      - alert: DatabaseDown
+        expr: |
+          up{job="database"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "Database instance {{ $labels.instance }} is down"
+          description: "Database target {{ $labels.instance }} has been unreachable for more than 1 minute."
+          runbook_url: "https://docs.example.com/runbooks/database-down"
+
+  - name: stellar-soroban-rpc
+    rules:
+      - alert: StellarRpcErrors
+        expr: |
+          sum(rate(stellar_rpc_errors_total{job="backend"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "Stellar RPC errors detected"
+          description: "The backend is experiencing Stellar RPC errors at a rate of {{ $value | humanize }}/s over the last 5 minutes."
+          runbook_url: "https://docs.example.com/runbooks/stellar-rpc"
+
+      - alert: StellarRpcHighErrorRate
+        expr: |
+          (
+            sum(rate(stellar_rpc_errors_total{job="backend"}[5m]))
+            /
+            sum(rate(stellar_rpc_requests_total{job="backend"}[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "High Stellar RPC error rate ({{ $value | humanizePercentage }})"
+          description: "More than 5% of Stellar RPC requests have failed over the last 5 minutes."
+          runbook_url: "https://docs.example.com/runbooks/stellar-rpc"
+
+      - alert: SorobanRpcErrors
+        expr: |
+          sum(rate(soroban_rpc_errors_total{job="backend"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "Soroban RPC errors detected"
+          description: "The backend is experiencing Soroban RPC errors at a rate of {{ $value | humanize }}/s over the last 5 minutes."
+          runbook_url: "https://docs.example.com/runbooks/soroban-rpc"
+
+      - alert: SorobanRpcHighErrorRate
+        expr: |
+          (
+            sum(rate(soroban_rpc_errors_total{job="backend"}[5m]))
+            /
+            sum(rate(soroban_rpc_requests_total{job="backend"}[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "High Soroban RPC error rate ({{ $value | humanizePercentage }})"
+          description: "More than 5% of Soroban RPC requests have failed over the last 5 minutes."
+          runbook_url: "https://docs.example.com/runbooks/soroban-rpc"
+
+      - alert: StellarRpcLatencyHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(stellar_rpc_request_duration_seconds_bucket{job="backend"}[5m])) by (le)
+          ) > 2
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "High Stellar RPC latency ({{ $value | humanizeDuration }})"
+          description: "The 95th percentile Stellar RPC request latency has exceeded 2s for more than 10 minutes."
+          runbook_url: "https://docs.example.com/runbooks/stellar-rpc"
+
+      - alert: SorobanRpcLatencyHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(soroban_rpc_request_duration_seconds_bucket{job="backend"}[5m])) by (le)
+          ) > 2
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "High Soroban RPC latency ({{ $value | humanizeDuration }})"
+          description: "The 95th percentile Soroban RPC request latency has exceeded 2s for more than 10 minutes."
+          runbook_url: "https://docs.example.com/runbooks/soroban-rpc"
