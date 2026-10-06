@@ -1,0 +1,47 @@
+name: Deploy Contracts
+
+on:
+  workflow_dispatch:
+    inputs:
+      network:
+        description: 'Network to deploy contracts to'
+        required: true
+        default: 'testnet'
+        type: choice
+        options:
+          - testnet
+          - mainnet
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.network == 'mainnet' && 'mainnet-approval' || 'testnet' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Deploy contracts
+        env:
+          NETWORK: ${{ github.event.inputs.network }}
+          DEPLOYER_SECRET_KEY: ${{ secrets.DEPLOYER_SECRET_KEY }}
+          RPC_URL: ${{ github.event.inputs.network == 'mainnet' && secrets.MAINNET_RPC_URL || secrets.TESTNET_RPC_URL }}
+          NETWORK_PASSPHRASE: ${{ github.event.inputs.network == 'mainnet' && secrets.MAINNET_NETWORK_PASSPHRASE || secrets.TESTNET_NETWORK_PASSPHRASE }}
+        run: npm run deploy:contracts
+
+      - name: Upload contract IDs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-ids-${{ github.event.inputs.network }}
+          path: contract-ids.env
+          if-no-files-found: error
+          retention-days: 30
+</br>

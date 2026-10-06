@@ -30,7 +30,7 @@ scrape_configs:
     metrics_path: '/metrics'
     scheme: 'http'
     static_configs:
-      - targets: ['backend:8000']
+      - targets: ['backend:3000']
         labels:
           service: 'synapsvault-backend'
           tier: 'application'
@@ -47,7 +47,7 @@ scrape_configs:
     metrics_path: '/health'
     scheme: 'http'
     static_configs:
-      - targets: ['backend:8000']
+      - targets: ['backend:3000']
         labels:
           service: 'synapsvault-backend'
           tier: 'application'

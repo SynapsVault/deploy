@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: default
+  labels:
+    app: stellar-facilitator
+    component: backend
+data:
+  NODE_ENV: "production"
+  PORT: "3000"
+  STELLAR_NETWORK: "testnet"
+  SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org"
+  STELLAR_HORIZON_URL: "https://horizon-testnet.stellar.org"
+  USDC_CONTRACT_ID: "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA"
+  FACILITATOR_URL: "http://backend:3000"
+  ALLOWED_ORIGINS: "http://localhost:3001,http://frontend:3001"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  namespace: default
+  labels:
+    app: stellar-facilitator
+    component: frontend
+data:
+  NODE_ENV: "production"
+  PORT: "3001"
+  STELLAR_NETWORK: "testnet"
+  SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org"
+  STELLAR_HORIZON_URL: "https://horizon-testnet.stellar.org"
+  USDC_CONTRACT_ID: "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA"
+  FACILITATOR_URL: "http://backend:3000"
+  ALLOWED_ORIGINS: "http://localhost:3001,http://frontend:3001"
