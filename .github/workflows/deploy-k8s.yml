@@ -4,11 +4,33 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'k8s/**'
+      - '.github/workflows/deploy-k8s.yml'
   workflow_dispatch:
+    inputs:
+      backend_ref:
+        description: 'Git ref of SynapsVault/backend to build'
+        required: true
+        default: 'main'
+        type: string
+      frontend_ref:
+        description: 'Git ref of SynapsVault/frontend to build'
+        required: true
+        default: 'main'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-k8s
+  cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository }}
 
 jobs:
   build-and-push:
@@ -19,9 +41,32 @@ jobs:
       packages: write
     outputs:
       image-tag: ${{ steps.meta.outputs.tag }}
+      image-prefix: ${{ steps.meta.outputs.prefix }}
     steps:
-      - name: Checkout repository
+      - name: Checkout deploy repository
         uses: actions/checkout@v4
+
+      # The Dockerfiles live here; the application source lives in sibling repos.
+      - name: Checkout backend source
+        uses: actions/checkout@v4
+        with:
+          repository: SynapsVault/backend
+          ref: ${{ inputs.backend_ref || 'main' }}
+          path: src/backend
+
+      - name: Checkout frontend source
+        uses: actions/checkout@v4
+        with:
+          repository: SynapsVault/frontend
+          ref: ${{ inputs.frontend_ref || 'main' }}
+          path: src/frontend
+
+      - name: Compute image names
+        id: meta
+        run: |
+          # Registry paths must be lowercase (the org is "SynapsVault").
+          echo "prefix=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -33,35 +78,46 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute image tag
-        id: meta
-        run: |
-          TAG="${GITHUB_SHA::12}"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-
       - name: Build and push backend image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
-          context: ./backend
+          context: ./src/backend
           file: ./backend/Dockerfile
+          target: runtime
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:${{ steps.meta.outputs.tag }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            ${{ steps.meta.outputs.prefix }}/backend:${{ steps.meta.outputs.tag }}
+            ${{ steps.meta.outputs.prefix }}/backend:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Build and push backend migrate image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./src/backend
+          file: ./backend/Dockerfile
+          target: migrate
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.prefix }}/backend-migrate:${{ steps.meta.outputs.tag }}
+            ${{ steps.meta.outputs.prefix }}/backend-migrate:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend-migrate
 
       - name: Build and push frontend image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
-          context: ./frontend
+          context: ./src/frontend
           file: ./frontend/Dockerfile
           push: true
+          build-args: |
+            VITE_API_URL=/api
+            VITE_NETWORK=${{ vars.STELLAR_NETWORK || 'testnet' }}
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${{ steps.meta.outputs.tag }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            ${{ steps.meta.outputs.prefix }}/frontend:${{ steps.meta.outputs.tag }}
+            ${{ steps.meta.outputs.prefix }}/frontend:latest
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
 
   deploy:
     name: Deploy to Cluster
@@ -74,32 +130,55 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check cluster credentials
+        id: config
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG }}
+        run: |
+          if [[ -z "$KUBECONFIG_B64" ]]; then
+            echo "::warning::Deploy skipped: the KUBECONFIG secret is not configured for the production environment. Images were still built and pushed."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up kubectl
+        if: steps.config.outputs.ready == 'true'
         uses: azure/setup-kubectl@v4
         with:
-          version: v1.29.0
+          version: v1.31.0
 
       - name: Configure kubeconfig
+        if: steps.config.outputs.ready == 'true'
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG }}
         run: |
           mkdir -p "$HOME/.kube"
-          echo "${{ secrets.KUBECONFIG }}" | base64 -d > "$HOME/.kube/config"
+          printf '%s' "$KUBECONFIG_B64" | base64 -d > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
 
-      - name: Set image tags in kustomization
+      - name: Pin image tags
+        if: steps.config.outputs.ready == 'true'
         working-directory: ./k8s
+        env:
+          PREFIX: ${{ needs.build-and-push.outputs.image-prefix }}
+          TAG: ${{ needs.build-and-push.outputs.image-tag }}
         run: |
-          kubectl kustomize . > /tmp/rendered.yaml
-          sed -i "s|backend:latest|backend:${{ needs.build-and-push.outputs.image-tag }}|g" /tmp/rendered.yaml
-          sed -i "s|frontend:latest|frontend:${{ needs.build-and-push.outputs.image-tag }}|g" /tmp/rendered.yaml
+          kustomize edit set image \
+            "backend=${PREFIX}/backend:${TAG}" \
+            "backend-migrate=${PREFIX}/backend-migrate:${TAG}" \
+            "frontend=${PREFIX}/frontend:${TAG}"
+          kubectl kustomize . | grep -E '^\s+image:'
 
-      - name: Apply kustomization
-        working-directory: ./k8s
+      - name: Apply manifests
+        if: steps.config.outputs.ready == 'true'
         run: |
-          kubectl apply -k .
-          kubectl rollout status deployment/backend --timeout=180s
-          kubectl rollout status deployment/frontend --timeout=180s
+          kubectl apply -k k8s/
+          kubectl -n synapsvault rollout status deployment/backend --timeout=300s
+          kubectl -n synapsvault rollout status deployment/frontend --timeout=180s
 
       - name: Verify deployment
+        if: steps.config.outputs.ready == 'true'
         run: |
-          kubectl get deployments -o wide
-          kubectl get pods -o wide
+          kubectl -n synapsvault get deployments -o wide
+          kubectl -n synapsvault get pods -o wide

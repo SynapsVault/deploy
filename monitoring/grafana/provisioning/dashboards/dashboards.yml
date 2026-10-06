@@ -1,0 +1,12 @@
+apiVersion: 1
+
+# monitoring/grafana-dashboard.json is mounted into this folder by
+# docker-compose.yml.
+providers:
+  - name: synapsvault
+    folder: SynapsVault
+    type: file
+    disableDeletion: false
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

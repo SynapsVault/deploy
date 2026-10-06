@@ -12,45 +12,52 @@ Before deploying, ensure you have the following available:
 - **An ingress controller** — e.g. [ingress-nginx](https://kubernetes.github.io/ingress-nginx/). The `Ingress` resource in `k8s/` assumes an ingress controller is installed and watching `Ingress` resources.
 - **cert-manager** — for automatic TLS certificate issuance. Install it and configure a `ClusterIssuer` (e.g. Let's Encrypt) before applying the ingress. See the [cert-manager docs](https://cert-manager.io/docs/).
 
+## What gets deployed
+
+Everything lives in the `synapsvault` namespace (set by `k8s/kustomization.yaml`):
+
+| Resource | Purpose |
+| --- | --- |
+| `Deployment/backend` | API server on port 3000, with a `migrate` initContainer that runs `drizzle-kit migrate` before each new version starts |
+| `Service/backend`, `HorizontalPodAutoscaler/backend` | ClusterIP on port 3000; scales 2–10 replicas on CPU |
+| `Deployment/frontend`, `Service/frontend` | nginx serving the built SPA on port 80 |
+| `ConfigMap/backend-config` | Non-secret backend settings (network, RPC URLs, CORS origins) |
+| `Ingress/app-api` | `https://<host>/api/*` → backend, with the `/api` prefix stripped |
+| `Ingress/app-web` | `https://<host>/*` → frontend |
+
+Before the first deploy, replace `app.example.com` in `k8s/ingress.yaml` and `ALLOWED_ORIGINS` in `k8s/configmap.yaml` with your real host.
+
+Images are built from this repo's `backend/Dockerfile` and `frontend/Dockerfile` with the `SynapsVault/backend` and `SynapsVault/frontend` repositories as build contexts, and pushed to `ghcr.io/synapsvault/deploy/{backend,backend-migrate,frontend}`.
+
 ## 1. Create the secrets
 
-The deployment expects application secrets to exist in the target namespace before the workloads are applied. Create them out-of-band so they are never committed to the repository.
+The backend reads its secrets from a Secret named `backend-secret`, which must exist before the workloads are applied. Create it out-of-band so real values are never committed. [`k8s/secrets.yaml`](../k8s/secrets.yaml) documents the expected keys; it is deliberately **not** part of the kustomization, so `kubectl apply -k` never overwrites the real secret with placeholders.
 
 Create the namespace first (if it does not already exist):
 
 ```sh
-kubectl create namespace <namespace>
+kubectl create namespace synapsvault
 ```
 
-Create the application secret from literal values:
+Create the secret from an env file (recommended, so values are not left in shell history), using the keys listed in `k8s/secrets.yaml`:
 
 ```sh
-kubectl create secret generic app-secrets \
-  --namespace <namespace> \
-  --from-literal=DATABASE_URL='postgres://user:pass@host:5432/db' \
-  --from-literal=SECRET_KEY='<random-secret>' \
-  --from-literal=OTHER_SECRET='<value>'
-```
-
-Alternatively, create the secret from an env file (recommended so values are not left in shell history):
-
-```sh
-kubectl create secret generic app-secrets \
-  --namespace <namespace> \
+kubectl create secret generic backend-secret \
+  --namespace synapsvault \
   --from-env-file=./secrets.env
 ```
 
 If you need to update an existing secret:
 
 ```sh
-kubectl create secret generic app-secrets \
-  --namespace <namespace> \
+kubectl create secret generic backend-secret \
+  --namespace synapsvault \
   --from-env-file=./secrets.env \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 > **Note:** After rotating secrets, restart the workloads so the new values are picked up:
-> `kubectl rollout restart deployment/<name> -n <namespace>`.
+> `kubectl rollout restart deployment/backend -n synapsvault`.
 
 ## 2. Apply the manifests
 
@@ -66,33 +73,43 @@ To preview what will be applied without changing the cluster:
 kubectl kustomize k8s/
 ```
 
-To target a specific overlay (if one exists):
+The manifests reference images by the `:latest` tag. To deploy a specific build, pin the tags first (this is what CI does):
 
 ```sh
-kubectl apply -k k8s/overlays/production
+cd k8s
+kustomize edit set image \
+  backend=ghcr.io/synapsvault/deploy/backend:<sha> \
+  backend-migrate=ghcr.io/synapsvault/deploy/backend-migrate:<sha> \
+  frontend=ghcr.io/synapsvault/deploy/frontend:<sha>
 ```
+
+### Continuous deployment
+
+The [Deploy to Kubernetes](../.github/workflows/deploy-k8s.yml) workflow runs on pushes to `main` that touch `backend/`, `frontend/` or `k8s/` (or on manual dispatch, where you can choose the app repo refs). It builds and pushes all three images tagged with the commit SHA, pins those tags, applies the kustomization and waits for both rollouts.
+
+It needs a base64-encoded kubeconfig in the `KUBECONFIG` secret of the `production` environment (`base64 -w0 < kubeconfig`). Until that secret exists, the deploy job is skipped with a warning; images are still built and pushed.
 
 ## 3. Verify the rollout
 
 Watch the rollout status of each deployment:
 
 ```sh
-kubectl rollout status deployment/<name> -n <namespace>
+kubectl rollout status deployment/<name> -n synapsvault
 ```
 
 Inspect the resulting resources:
 
 ```sh
-kubectl get all -n <namespace>
-kubectl get ingress -n <namespace>
-kubectl get pods -n <namespace> -o wide
+kubectl get all -n synapsvault
+kubectl get ingress -n synapsvault
+kubectl get pods -n synapsvault -o wide
 ```
 
 Check that pods are `Running` and `Ready`, and that the ingress has an address assigned. If a pod is not becoming ready, inspect it:
 
 ```sh
-kubectl describe pod <pod> -n <namespace>
-kubectl logs <pod> -n <namespace>
+kubectl describe pod <pod> -n synapsvault
+kubectl logs <pod> -n synapsvault
 ```
 
 ## 4. Scale
@@ -100,7 +117,7 @@ kubectl logs <pod> -n <namespace>
 Scale a deployment manually:
 
 ```sh
-kubectl scale deployment/<name> --replicas=5 -n <namespace>
+kubectl scale deployment/<name> --replicas=5 -n synapsvault
 ```
 
 > **Note:** If a HorizontalPodAutoscaler (HPA) manages the deployment, manual scaling will be overridden by the HPA. Adjust the HPA's `minReplicas`/`maxReplicas` instead (see below).
@@ -112,25 +129,25 @@ Every `kubectl apply` of a changed pod template creates a new ReplicaSet, giving
 View the rollout history:
 
 ```sh
-kubectl rollout history deployment/<name> -n <namespace>
+kubectl rollout history deployment/<name> -n synapsvault
 ```
 
 Roll back to the previous revision:
 
 ```sh
-kubectl rollout undo deployment/<name> -n <namespace>
+kubectl rollout undo deployment/<name> -n synapsvault
 ```
 
 Roll back to a specific revision:
 
 ```sh
-kubectl rollout undo deployment/<name> --to-revision=<n> -n <namespace>
+kubectl rollout undo deployment/<name> --to-revision=<n> -n synapsvault
 ```
 
 Confirm the rollback completed:
 
 ```sh
-kubectl rollout status deployment/<name> -n <namespace>
+kubectl rollout status deployment/<name> -n synapsvault
 ```
 
 ## 6. Autoscaling (HPA)
@@ -145,14 +162,14 @@ The `HorizontalPodAutoscaler` in `k8s/` scales the deployment based on CPU utili
 The HPA requires the [metrics-server](https://github.com/kubernetes-sigs/metrics-server) to be installed in the cluster; without it, the HPA cannot read utilization and will not scale. Verify metrics are available:
 
 ```sh
-kubectl top pods -n <namespace>
-kubectl get hpa -n <namespace>
+kubectl top pods -n synapsvault
+kubectl get hpa -n synapsvault
 ```
 
 To change scaling behavior, edit the HPA (or its manifest in `k8s/`) and re-apply:
 
 ```sh
-kubectl edit hpa <name> -n <namespace>
+kubectl edit hpa <name> -n synapsvault
 ```
 
 ## 7. Probes
@@ -174,15 +191,15 @@ Each probe sets:
 Inspect probe behavior:
 
 ```sh
-kubectl describe pod <pod> -n <namespace>
+kubectl describe pod <pod> -n synapsvault
 ```
 
 Look at the `Liveness`/`Readiness` sections and the `Events` at the bottom for probe failures.
 
 ## Troubleshooting
 
-- **Pods stuck in `Pending`** — check node capacity and scheduling events: `kubectl describe pod <pod> -n <namespace>`.
-- **Pods in `CrashLoopBackOff`** — check logs: `kubectl logs <pod> -n <namespace> --previous`.
+- **Pods stuck in `Pending`** — check node capacity and scheduling events: `kubectl describe pod <pod> -n synapsvault`.
+- **Pods in `CrashLoopBackOff`** — check logs: `kubectl logs <pod> -n synapsvault --previous`.
 - **Ingress has no address** — confirm an ingress controller is installed and running.
-- **TLS certificate not issued** — check cert-manager: `kubectl describe certificate -n <namespace>` and `kubectl describe certificaterequest -n <namespace>`.
+- **TLS certificate not issued** — check cert-manager: `kubectl describe certificate -n synapsvault` and `kubectl describe certificaterequest -n synapsvault`.
 - **HPA shows `<unknown>` targets** — metrics-server is missing or not ready.

@@ -6,13 +6,18 @@
 #   1. Dump the Postgres database via pg_dump (using DATABASE_URL).
 #   2. Capture contract state (contract IDs + on-chain state snapshots via Soroban RPC).
 #   3. Encrypt the resulting archive with age or gpg (using BACKUP_ENCRYPTION_KEY).
-#   4. Upload the encrypted archive to object storage (S3 / Supabase Storage)
-#      using BACKUP_STORAGE_* credentials.
+#   4. Upload the encrypted archive to object storage (S3-compatible via the
+#      AWS CLI, or Supabase Storage via its REST API) using BACKUP_STORAGE_*
+#      credentials.
 #   5. Emit a JSON manifest with timestamp, checksum, size, and source metadata.
 #   6. Expose a Prometheus textfile metric for backup success/failure and
 #      last-success timestamp.
 #
 # This script is intended to be run from cron / a systemd timer / CI.
+# scripts/restore.sh consumes the archives and manifests it produces.
+#
+# Set BACKUP_OUTPUT_DIR to also keep a local copy of the manifest (and a
+# `manifest.json` pointing at the latest run), e.g. for CI artifact upload.
 #
 # Exit codes:
 #   0  success
@@ -25,9 +30,6 @@ set -Eeuo pipefail
 # ---------------------------------------------------------------------------
 # Configuration & defaults
 # ---------------------------------------------------------------------------
-
-SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Timestamp (UTC) used for artifact naming and manifest.
 BACKUP_TIMESTAMP="${BACKUP_TIMESTAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
@@ -85,6 +87,10 @@ BACKUP_SKIP_DB="${BACKUP_SKIP_DB:-0}"
 BACKUP_SKIP_CONTRACTS="${BACKUP_SKIP_CONTRACTS:-0}"
 BACKUP_SKIP_UPLOAD="${BACKUP_SKIP_UPLOAD:-0}"
 BACKUP_VERBOSE="${BACKUP_VERBOSE:-0}"
+BACKUP_OUTPUT_DIR="${BACKUP_OUTPUT_DIR:-}"
+
+# Set by main(); read by the EXIT trap to report failure metrics.
+START_TS=""
 
 # ---------------------------------------------------------------------------
 # Logging helpers
@@ -117,6 +123,13 @@ die() {
 
 cleanup() {
   local exit_code=$?
+  if [[ "${exit_code}" -ne 0 && -n "${START_TS}" ]]; then
+    local end_ts
+    end_ts="$(date -u +%s)"
+    emit_metrics 0 "$(( end_ts - START_TS ))" 0 "$(previous_last_success)" \
+      "backup failed with exit code ${exit_code}" || true
+    error "Backup failed with exit code ${exit_code}"
+  fi
   if [[ "${CLEANUP_WORK_DIR}" == "1" && -d "${WORK_DIR}" ]]; then
     debug "Cleaning up work directory ${WORK_DIR}"
     rm -rf "${WORK_DIR}" || true
@@ -146,6 +159,7 @@ check_dependencies() {
 
   if [[ "${BACKUP_SKIP_DB}" != "1" ]]; then
     require_cmd pg_dump
+    require_cmd psql
   fi
 
   if [[ "${BACKUP_SKIP_CONTRACTS}" != "1" ]]; then
@@ -155,15 +169,18 @@ check_dependencies() {
   case "${BACKUP_ENCRYPTION_METHOD}" in
     age)  require_cmd age ;;
     gpg)  require_cmd gpg ;;
-    none) : ;;
+    none) warn "Encryption explicitly disabled (BACKUP_ENCRYPTION_METHOD=none)" ;;
     auto)
-      if command -v age >/dev/null 2>&1; then
+      # age cannot read a passphrase non-interactively, so it is only chosen
+      # for age recipients (age1...) or recipient files; passphrases use gpg.
+      if [[ ( "${BACKUP_ENCRYPTION_KEY}" == age1* || -f "${BACKUP_ENCRYPTION_KEY}" ) ]] \
+          && command -v age >/dev/null 2>&1; then
         BACKUP_ENCRYPTION_METHOD="age"
       elif command -v gpg >/dev/null 2>&1; then
         BACKUP_ENCRYPTION_METHOD="gpg"
       else
-        warn "Neither age nor gpg found; encryption disabled"
-        BACKUP_ENCRYPTION_METHOD="none"
+        # Never silently fall back to uploading plaintext database dumps.
+        die 3 "Neither age nor gpg found; install one or set BACKUP_ENCRYPTION_METHOD=none explicitly"
       fi
       ;;
     *)
@@ -175,11 +192,20 @@ check_dependencies() {
     die 2 "BACKUP_ENCRYPTION_KEY is required when encryption is enabled"
   fi
 
+  if [[ "${BACKUP_ENCRYPTION_METHOD}" == "age" \
+      && "${BACKUP_ENCRYPTION_KEY}" != age1* && ! -f "${BACKUP_ENCRYPTION_KEY}" ]]; then
+    die 2 "age needs an age1... recipient or a recipients file; use gpg for passphrases"
+  fi
+
   if [[ "${BACKUP_SKIP_UPLOAD}" != "1" ]]; then
-    require_cmd curl
     if [[ -z "${BACKUP_STORAGE_BUCKET}" ]]; then
       die 2 "BACKUP_STORAGE_BUCKET is required for upload"
     fi
+    case "${BACKUP_STORAGE_PROVIDER}" in
+      s3)       require_cmd aws ;;
+      supabase) require_cmd curl ;;
+      *)        die 2 "Unsupported BACKUP_STORAGE_PROVIDER: ${BACKUP_STORAGE_PROVIDER}" ;;
+    esac
   fi
 }
 
@@ -195,6 +221,11 @@ emit_metrics() {
   local size_bytes="$3"
   local last_success_ts="$4" # unix epoch of last success (0 if unknown)
   local error_message="${5:-}"
+
+  if [[ ! -d "${PROM_DIR}" ]]; then
+    debug "Prometheus textfile directory ${PROM_DIR} does not exist; metrics not written"
+    return 0
+  fi
 
   local tmp
   tmp="$(mktemp "${PROM_FILE}.XXXXXX")"
@@ -229,13 +260,8 @@ emit_metrics() {
     fi
   } > "${tmp}"
 
-  if [[ -d "${PROM_DIR}" ]]; then
-    mv -f "${tmp}" "${PROM_FILE}"
-    debug "Wrote metrics to ${PROM_FILE}"
-  else
-    warn "Prometheus textfile directory ${PROM_DIR} does not exist; metrics not written"
-    rm -f "${tmp}"
-  fi
+  mv -f "${tmp}" "${PROM_FILE}"
+  debug "Wrote metrics to ${PROM_FILE}"
 }
 
 # Read the previous last-success timestamp from the existing metrics file so
@@ -266,11 +292,21 @@ dump_database() {
   info "Dumping Postgres database"
   local dump_path="${out_dir}/database.sql.gz"
 
-  # Use custom format for portability, then gzip. pg_dump writes to stdout so
-  # we can pipe directly into gzip without a temp file.
-  if ! pg_dump --no-owner --no-privileges --format=plain "${DATABASE_URL}" \
-      | gzip -9 > "${dump_path}"; then
+  # Plain SQL with DROP ... IF EXISTS statements so restore.sh can replay it
+  # onto an existing database with psql. pg_dump writes to stdout so we can
+  # pipe directly into gzip without a temp file.
+  if ! pg_dump --no-owner --no-privileges --format=plain --clean --if-exists \
+      "${DATABASE_URL}" | gzip -9 > "${dump_path}"; then
     die 1 "pg_dump failed"
+  fi
+
+  # Record the table list so restore.sh --verify-only can check that every
+  # table came back.
+  if ! psql "${DATABASE_URL}" -X -At -v ON_ERROR_STOP=1 -c \
+      "SELECT schemaname || '.' || tablename FROM pg_tables
+        WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+        ORDER BY 1;" > "${out_dir}/tables.txt"; then
+    die 1 "failed to list tables for the backup manifest"
   fi
 
   debug "Database dump written to ${dump_path} ($(stat -c '%s' "${dump_path}" 2>/dev/null || stat -f '%z' "${dump_path}") bytes)"
@@ -484,77 +520,22 @@ object_key_for() {
   printf '%s/%s' "${BACKUP_STORAGE_PREFIX%/}" "${filename}"
 }
 
-# Upload a file to S3-compatible storage using SigV4 via curl.
+# Upload a file to S3-compatible storage (AWS S3, R2, MinIO, Supabase's S3
+# endpoint, ...) with the AWS CLI, which handles SigV4 signing and multipart
+# uploads for large archives.
 upload_s3() {
   local file="$1"
   local key="$2"
 
-  local endpoint="${BACKUP_STORAGE_ENDPOINT}"
-  if [[ -z "${endpoint}" ]]; then
-    endpoint="https://s3.${BACKUP_STORAGE_REGION}.amazonaws.com"
-  fi
-  endpoint="${endpoint%/}"
-
-  local host
-  host="$(printf '%s' "${endpoint}" | sed -E 's#^https?://##; s#/.*$##')"
-
-  local url="${endpoint}/${BACKUP_STORAGE_BUCKET}/${key}"
-  local content_sha256
-  content_sha256="$(sha256sum "${file}" | awk '{print $1}')"
-  local content_length
-  content_length="$(stat -c '%s' "${file}" 2>/dev/null || stat -f '%z' "${file}")"
-  local date_utc
-  date_utc="$(date -u +%Y%m%dT%H%M%SZ)"
-  local date_short
-  date_short="$(date -u +%Y%m%d)"
-  local content_type="application/octet-stream"
-
-  # Canonical request.
-  local canonical_uri="/${BACKUP_STORAGE_BUCKET}/${key}"
-  local canonical_headers="content-type:${content_type}\nhost:${host}\nx-amz-content-sha256:${content_sha256}\nx-amz-date:${date_utc}\n"
-  local signed_headers="content-type;host;x-amz-content-sha256;x-amz-date"
-  local canonical_request
-  canonical_request="$(printf 'PUT\n%s\n\n%b\n%s\n%s' \
-    "${canonical_uri}" "${canonical_headers}" "${signed_headers}" "${content_sha256}")"
-
-  local credential_scope="${date_short}/${BACKUP_STORAGE_REGION}/s3/aws4_request"
-  local string_to_sign
-  string_to_sign="$(printf 'AWS4-HMAC-SHA256\n%s\n%s\n%s' \
-    "${date_utc}" "${credential_scope}" \
-    "$(printf '%s' "${canonical_request}" | sha256sum | awk '{print $1}')")"
-
-  local signing_key
-  signing_key="$(printf '%s' "${BACKUP_STORAGE_SECRET_ACCESS_KEY}" \
-    | openssl dgst -sha256 -mac HMAC -macopt "hexkey:$(printf 'AWS4%s' "${BACKUP_STORAGE_SECRET_ACCESS_KEY}" | xxd -p -c 256)" 2>/dev/null || true)"
-
-  # Use openssl for the HMAC chain (portable across environments).
-  local k_date k_region k_service k_signing
-  k_date="$(printf '%s' "${date_short}" | openssl dgst -sha256 -mac HMAC -macopt "key:AWS4${BACKUP_STORAGE_SECRET_ACCESS_KEY}" -binary | xxd -p -c 256)"
-  k_region="$(printf '%s' "${BACKUP_STORAGE_REGION}" | openssl dgst -sha256 -mac HMAC -macopt "hexkey:${k_date}" -binary | xxd -p -c 256)"
-  k_service="$(printf 's3' | openssl dgst -sha256 -mac HMAC -macopt "hexkey:${k_region}" -binary | xxd -p -c 256)"
-  k_signing="$(printf 'aws4_request' | openssl dgst -sha256 -mac HMAC -macopt "hexkey:${k_service}" -binary | xxd -p -c 256)"
-
-  local signature
-  signature="$(printf '%s' "${string_to_sign}" | openssl dgst -sha256 -mac HMAC -macopt "hexkey:${k_signing}" -binary | xxd -p -c 256)"
-
-  local authorization="AWS4-HMAC-SHA256 Credential=${BACKUP_STORAGE_ACCESS_KEY_ID}/${credential_scope}, SignedHeaders=${signed_headers}, Signature=${signature}"
-
-  local -a curl_args=(
-    -fsS
-    -X PUT
-    -H "Content-Type: ${content_type}"
-    -H "x-amz-content-sha256: ${content_sha256}"
-    -H "x-amz-date: ${date_utc}"
-    -H "Authorization: ${authorization}"
-    --data-binary "@${file}"
-    --max-time "${BACKUP_UPLOAD_TIMEOUT:-300}"
-  )
-
-  if [[ -n "${BACKUP_STORAGE_SESSION_TOKEN}" ]]; then
-    curl_args+=(-H "x-amz-security-token: ${BACKUP_STORAGE_SESSION_TOKEN}")
+  local -a args=(--region "${BACKUP_STORAGE_REGION}" --only-show-errors)
+  if [[ -n "${BACKUP_STORAGE_ENDPOINT}" ]]; then
+    args+=(--endpoint-url "${BACKUP_STORAGE_ENDPOINT%/}")
   fi
 
-  curl "${curl_args[@]}" "${url}" >/dev/null
+  AWS_ACCESS_KEY_ID="${BACKUP_STORAGE_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}" \
+  AWS_SECRET_ACCESS_KEY="${BACKUP_STORAGE_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}" \
+  AWS_SESSION_TOKEN="${BACKUP_STORAGE_SESSION_TOKEN:-${AWS_SESSION_TOKEN:-}}" \
+    aws s3 cp "${args[@]}" "${file}" "s3://${BACKUP_STORAGE_BUCKET}/${key}"
 }
 
 # Upload a file to Supabase Storage using its REST API.
@@ -651,7 +632,7 @@ write_manifest() {
   "artifacts": {
     "archive": "${BACKUP_NAME}.tar.gz",
     "encrypted": "$(basename "${encrypted_file}")",
-    "manifest": "$(basename "${MANIFEST_PATH}")"
+    "manifest": "${BACKUP_NAME}.manifest.json"
   }
 }
 EOF
@@ -666,8 +647,7 @@ EOF
 main() {
   local start_ts
   start_ts="$(date -u +%s)"
-  local last_success
-  last_success="$(previous_last_success)"
+  START_TS="${start_ts}"
 
   info "Starting backup ${BACKUP_NAME}"
 
@@ -720,17 +700,17 @@ main() {
 
   emit_metrics 1 "${duration}" "${size_bytes}" "${end_ts}" ""
 
+  # 8. Optional local copy of the manifest (e.g. for CI artifact upload).
+  if [[ -n "${BACKUP_OUTPUT_DIR}" ]]; then
+    mkdir -p "${BACKUP_OUTPUT_DIR}"
+    cp -f "${MANIFEST_PATH}" "${BACKUP_OUTPUT_DIR}/"
+    cp -f "${MANIFEST_PATH}" "${BACKUP_OUTPUT_DIR}/manifest.json"
+    info "Manifest copied to ${BACKUP_OUTPUT_DIR}"
+  fi
+
   info "Backup completed successfully in ${duration}s (${size_bytes} bytes, sha256=${checksum})"
 }
 
-# Run main, capturing failures so we can emit failure metrics.
-if ! main; then
-  exit_code=$?
-  end_ts="$(date -u +%s)"
-  start_ts="${start_ts:-${end_ts}}"
-  duration=$(( end_ts - start_ts ))
-  last_success="$(previous_last_success)"
-  emit_metrics 0 "${duration}" 0 "${last_success}" "backup failed with exit code ${exit_code}"
-  error "Backup failed with exit code ${exit_code}"
-  exit "${exit_code}"
-fi
+# Called directly (not as `if ! main`) so `set -e` stays in effect inside it;
+# failure metrics are emitted by the EXIT trap.
+main
