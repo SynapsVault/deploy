@@ -1,12 +1,41 @@
-# Default owners for everything in the repository
+# CODEOWNERS — https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Each line is a file pattern followed by one or more owners.
+# The last matching rule takes precedence.
+#
+# @SynapsVault/core must approve every PR. The more specific rules below
+# ensure the right sub-team is also notified for their area.
+
+# Default: all files require core team approval
 * @SynapsVault/core
 
-# Kubernetes manifests, Dockerfiles, and CI/CD workflows
-/k8s/ @SynapsVault/core
-/backend/ @SynapsVault/core
-/frontend/ @SynapsVault/core
-/.github/ @SynapsVault/core
+# Kubernetes manifests and Kustomize overlays — infra team
+/k8s/ @SynapsVault/core @SynapsVault/infra
 
-# Operational scripts and backup/restore runbooks
+# Dockerfiles — infra team
+/backend/Dockerfile @SynapsVault/core @SynapsVault/infra
+/frontend/Dockerfile @SynapsVault/core @SynapsVault/infra
+
+# CI / CD workflows and Actions config — infra team
+/.github/workflows/ @SynapsVault/core @SynapsVault/infra
+/.github/dependabot.yml @SynapsVault/core @SynapsVault/infra
+/.github/app-versions.yml @SynapsVault/core @SynapsVault/infra
+
+# Issue / PR templates — any core member
+/.github/ISSUE_TEMPLATE/ @SynapsVault/core
+/.github/PULL_REQUEST_TEMPLATE.md @SynapsVault/core
+
+# Deployment and operational scripts
 /scripts/ @SynapsVault/core
+
+# Monitoring configuration (alerts, dashboards, recording rules)
+/monitoring/ @SynapsVault/core
+
+# Runbooks and guides
 /docs/ @SynapsVault/core
+
+# Security-sensitive files — always require a security-aware core review
+/SECURITY.md @SynapsVault/core
+/k8s/secrets.yaml @SynapsVault/core @SynapsVault/infra
+/.github/workflows/deploy-k8s.yml @SynapsVault/core @SynapsVault/infra
+/.github/workflows/backup.yml @SynapsVault/core @SynapsVault/infra

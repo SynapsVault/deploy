@@ -236,6 +236,41 @@ jobs:
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Validate environment variables (k8s target)
+        # Fail fast if any required variable is missing or contains a placeholder.
+        # Secrets are mapped from GitHub Actions secrets into the environment so
+        # the script can verify they have been filled in.
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_STORAGE_BUCKET: ${{ vars.SUPABASE_STORAGE_BUCKET }}
+          STELLAR_NETWORK: ${{ vars.STELLAR_NETWORK }}
+          SOROBAN_RPC_URL: ${{ vars.SOROBAN_RPC_URL }}
+          USDC_CONTRACT_ID: ${{ vars.USDC_CONTRACT_ID }}
+          PAY_TO: ${{ vars.PAY_TO }}
+          AGENT_SECRET_KEY: ${{ secrets.AGENT_SECRET_KEY }}
+          REGISTRY_SECRET_KEY: ${{ secrets.REGISTRY_SECRET_KEY }}
+          STELLAR_CONTRACT_VAULT_REGISTRY: ${{ vars.STELLAR_CONTRACT_VAULT_REGISTRY }}
+          STELLAR_CONTRACT_ACCESS_LEASE: ${{ vars.STELLAR_CONTRACT_ACCESS_LEASE }}
+          STELLAR_CONTRACT_SUBSCRIPTION: ${{ vars.STELLAR_CONTRACT_SUBSCRIPTION }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+          STELLAR_SECRET_KEY: ${{ secrets.STELLAR_SECRET_KEY }}
+          STELLAR_PUBLIC_KEY: ${{ vars.STELLAR_PUBLIC_KEY }}
+          POSTGRES_USER: ${{ vars.POSTGRES_USER || 'postgres' }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'postgres' }}
+          POSTGRES_DB: ${{ vars.POSTGRES_DB || 'app' }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: node scripts/check-env.js --target k8s
+
       - name: Set up kubectl
         if: steps.config.outputs.ready == 'true'
         uses: azure/setup-kubectl@v5

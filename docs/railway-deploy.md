@@ -1,160 +1,267 @@
-# Deploy SynapsVault Backend to Railway (Free Tier)
+# Deploy SynapsVault Backend to Railway
 
-Railway gives you a free $5/month credit — enough to run the backend 24/7 for testnet demos.
-
-> **Other deployment paths**
-> - **Local development / self-hosted:** see [docker-compose.yml](../docker-compose.yml) and the local setup notes in [README.md](../README.md).
-> - **Production (Kubernetes):** see [docs/DEPLOYMENT.md](./DEPLOYMENT.md) for the Kubernetes manifests, scaling, and production hardening guidance.
-> - **Database migrations & rollback:** see [docs/DATABASE-ROLLBACK.md](./DATABASE-ROLLBACK.md) for rollback procedures. This guide only covers applying forward migrations.
-
-## 1. Prerequisites
-
-- Railway account at [railway.app](https://railway.app) (GitHub login)
-- `SynapsVault-backend` pushed to `github.com/SynapsVault/backend` ✅ (already done)
-- Supabase project for the database (free tier at [supabase.com](https://supabase.com))
+> **This is the canonical Railway deployment guide.**
+> All other mentions of Railway in this repository link here.
+>
+> Other deployment targets:
+> - **Local (Docker Compose):** see [README.md](../README.md#local-development-docker-compose) and [`docker-compose.yml`](../docker-compose.yml).
+> - **Production (Kubernetes):** see [`docs/DEPLOY-KUBERNETES.md`](./DEPLOY-KUBERNETES.md).
+> - **Database migrations and rollback:** see [`docs/DATABASE-ROLLBACK.md`](./DATABASE-ROLLBACK.md).
 
 ---
 
-## 2. Set up Supabase (database)
+## Overview
 
-1. Go to [supabase.com](https://supabase.com) → New project
-2. Name it `synapsvault-testnet`, choose any region
-3. Copy the **Connection string** (Settings → Database → Connection string → URI mode)
-   - Format: `postgres://postgres:[YOUR-DB-PASSWORD]@db.[ref].supabase.co:5432/postgres`
-4. Copy the **Service Role Key** (Settings → API → `service_role`)
+**Total time: ~20 minutes** (mostly waiting for the first build)
+
+```
+Part 1  Set up Supabase              (~8 min)
+Part 2  Deploy backend to Railway    (~10 min)
+Part 3  Run database migrations      (~2 min)
+Part 4  Verify and connect frontend  (~2 min)
+```
+
+At the end you will have:
+
+- A live backend API at `https://<your-app>.up.railway.app`
+- A Postgres database on Supabase (free tier, 500 MB)
+- File storage on Supabase (free, 1 GB)
+- Auto-deploy on every push to `main`
 
 ---
 
-## 3. Deploy to Railway
+## Prerequisites
 
-### Option A — Railway Dashboard (easiest)
+- [ ] Railway account at [railway.app](https://railway.app) — sign in with GitHub
+- [ ] `SynapsVault/backend` pushed to GitHub ✅
+- [ ] Supabase account at [supabase.com](https://supabase.com)
+- [ ] Contract IDs from `contract-ids.env` (output of Step 3 in [README.md](../README.md))
+- [ ] Backend wallet keypair (`STELLAR_SECRET_KEY` / `STELLAR_PUBLIC_KEY`)
+- [ ] Environment variables validated:
+  ```bash
+  cp .env.example .env   # fill in your values
+  node scripts/check-env.js --target railway
+  ```
+
+---
+
+## Part 1 — Supabase (database + storage)
+
+### 1.1 Create a project
+
+1. [supabase.com](https://supabase.com) → **New project**
+2. Name: `synapsvault-testnet`, choose a region close to your users
+3. Set a strong database password — **write it down**
+4. Wait ~2 minutes for provisioning
+
+### 1.2 Get your Database URL
+
+1. Left sidebar → **Settings** → **Database**
+2. Scroll to **Connection string** → select the **URI** tab
+3. Copy the string:
+   ```
+   postgres://postgres:[YOUR-DB-PASSWORD]@db.[ref].supabase.co:5432/postgres
+   ```
+4. This is your `DATABASE_URL`.
+
+> If you forget the password: Settings → Database → **Reset database password**.
+
+### 1.3 Get your API credentials
+
+1. Left sidebar → **Settings** → **API**
+2. Copy **Project URL** → this is `SUPABASE_URL`
+3. Reveal and copy `service_role` key → this is `SUPABASE_SERVICE_KEY`
+
+### 1.4 Create the storage bucket
+
+1. Left sidebar → **Storage** → **New bucket**
+2. Name: `resources`
+3. Toggle **Public bucket** → **OFF** (access controlled by the backend)
+4. Click **Save**
+
+---
+
+## Part 2 — Deploy to Railway
+
+### Option A — Dashboard (easiest)
 
 1. [railway.app/new](https://railway.app/new) → **Deploy from GitHub repo**
-2. Choose `SynapsVault/backend`
-3. Railway auto-detects the `Dockerfile` and builds it
-4. Go to **Settings → Domains** → **Generate Domain**
-   - You'll get a URL like `synapsvault-backend-production.up.railway.app`
+2. Select `SynapsVault/backend`
+3. Railway detects the `Dockerfile` and starts building automatically
+4. Go to **Settings → Domains → Generate Domain** once the build finishes
+   - URL format: `synapsvault-backend-production.up.railway.app`
 
 ### Option B — Railway CLI
 
 ```bash
 npm install -g @railway/cli
 railway login
-railway init          # link to new project
-railway up            # deploy from current directory
-railway domain        # get your public URL
+railway init      # link or create a project
+railway up        # deploy from the current directory
+railway domain    # print your public URL
 ```
 
----
+### Set environment variables
 
-## 4. Set environment variables
+In the Railway dashboard → your service → **Variables**, add every variable
+from the table below.
 
-> See [docs/ENVIRONMENT-VARIABLES.md](./ENVIRONMENT-VARIABLES.md) for the full reference of every variable, defaults, and required/optional status.
+> See [docs/ENVIRONMENT-VARIABLES.md](./ENVIRONMENT-VARIABLES.md) for the
+> complete reference including defaults, validation rules, and optional
+> variables. The table below covers the variables required for this deployment.
 
-In Railway dashboard → your service → **Variables**, add:
+#### Required — the server will not start without these
+
+| Variable | Value | Source |
+|----------|-------|--------|
+| `DATABASE_URL` | `postgres://postgres:[PASSWORD]@db.[ref].supabase.co:5432/postgres` | Supabase → Settings → Database → Connection string |
+| `SUPABASE_URL` | `https://[ref].supabase.co` | Supabase → Settings → API → Project URL |
+| `SUPABASE_SERVICE_KEY` | `eyJ...` (JWT) | Supabase → Settings → API → `service_role` |
+| `SUPABASE_STORAGE_BUCKET` | `resources` | Created in Part 1.4 |
+| `STELLAR_NETWORK` | `testnet` | Fixed value |
+| `NETWORK` | `testnet` | Fixed value |
+| `SOROBAN_RPC_URL` | `https://soroban-testnet.stellar.org` | Fixed value |
+| `USDC_CONTRACT_ID` | `CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA` | Fixed — testnet USDC |
+| `PAY_TO` | `G...` | Your BACKEND wallet public key |
+| `AGENT_SECRET_KEY` | `S...` | Your BACKEND wallet secret key |
+| `REGISTRY_SECRET_KEY` | `S...` | Same as `AGENT_SECRET_KEY` |
+| `STELLAR_CONTRACT_VAULT_REGISTRY` | `C...` | `contract-ids.env` |
+| `STELLAR_CONTRACT_ACCESS_LEASE` | `C...` | `contract-ids.env` |
+| `STELLAR_CONTRACT_SUBSCRIPTION` | `C...` | `contract-ids.env` |
+| `OPENROUTER_API_KEY` | `sk-or-...` | [openrouter.ai](https://openrouter.ai) (free tier available) |
+| `ADMIN_API_KEY` | random hex | `openssl rand -hex 32` |
+
+#### Optional but recommended
+
+| Variable | Value | Notes |
+|----------|-------|-------|
+| `NODE_ENV` | `production` | Enables production optimisations |
+| `PORT` | `3000` | Railway sets this automatically |
+| `ALLOWED_ORIGINS` | `https://[your-app].vercel.app` | Set after you have your Vercel URL |
+| `FACILITATOR_URL` | `https://www.x402.org/facilitator` | Default x402 facilitator |
+| `STELLAR_HORIZON_URL` | `https://horizon-testnet.stellar.org` | Already defaulted in code |
+
+#### Copy-paste block (replace `← FILL IN` values)
 
 ```env
-# Database
-DATABASE_URL=postgres://postgres:[YOUR-DB-PASSWORD]@db.[ref].supabase.co:5432/postgres
-
-# Supabase (for file storage)
-SUPABASE_URL=https://[ref].supabase.co
-SUPABASE_SERVICE_ROLE_KEY=eyJ...your_service_role_key
-
-# Stellar
+DATABASE_URL=postgres://postgres:[YOUR-DB-PASSWORD]@db.[YOUR-REF].supabase.co:5432/postgres
+SUPABASE_URL=https://[YOUR-REF].supabase.co
+SUPABASE_SERVICE_KEY=eyJ...
+SUPABASE_STORAGE_BUCKET=resources
 STELLAR_NETWORK=testnet
-STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org
-STELLAR_CONTRACT_VAULT_REGISTRY=[from contract-ids.env]
-STELLAR_CONTRACT_ACCESS_LEASE=[from contract-ids.env]
-STELLAR_CONTRACT_SUBSCRIPTION=[from contract-ids.env]
-STELLAR_SECRET_KEY=[BACKEND wallet secret key]
-
-# Security
-ADMIN_API_KEY=[generate: openssl rand -hex 32]
-
-# CORS — allow your Vercel frontend
-ALLOWED_ORIGINS=https://[your-app].vercel.app,http://localhost:5173
-
+NETWORK=testnet
+SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
+USDC_CONTRACT_ID=CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA
+PAY_TO=G...
+AGENT_SECRET_KEY=S...
+REGISTRY_SECRET_KEY=S...
+STELLAR_CONTRACT_VAULT_REGISTRY=C...
+STELLAR_CONTRACT_ACCESS_LEASE=C...
+STELLAR_CONTRACT_SUBSCRIPTION=C...
+OPENROUTER_API_KEY=sk-or-...
+ADMIN_API_KEY=← FILL IN (openssl rand -hex 32)
 NODE_ENV=production
 PORT=3000
+FACILITATOR_URL=https://www.x402.org/facilitator
 ```
+
+After adding all variables Railway automatically redeploys.
 
 ---
 
-## 5. Run database migrations
+## Part 3 — Run database migrations
 
-> This section covers **forward migrations only**. For rollback procedures (failed migration, bad deploy, data recovery), see [docs/DATABASE-ROLLBACK.md](./DATABASE-ROLLBACK.md).
+> This section covers **forward migrations only**. For rollback procedures, see
+> [docs/DATABASE-ROLLBACK.md](./DATABASE-ROLLBACK.md).
 
-After deploy, open Railway **Shell** tab:
+1. In the Railway dashboard, click on your service → **Shell** tab
+2. Run:
+   ```bash
+   pnpm drizzle-kit migrate
+   ```
 
-```bash
-node -e "
-const { drizzle } = require('drizzle-orm/node-postgres');
-const { migrate } = require('drizzle-orm/node-postgres/migrator');
-const { Pool } = require('pg');
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-migrate(drizzle(pool), { migrationsFolder: './drizzle' }).then(() => {
-  console.log('Migrations done'); process.exit(0);
-}).catch(err => { console.error(err); process.exit(1); });
-"
-```
-
-Or via the npm script (if you add one to package.json):
-```bash
-pnpm drizzle-kit migrate
-```
+Alternatively, connect to Supabase directly (Settings → SQL Editor) and apply
+each file in the `drizzle/` directory in order.
 
 ---
 
-## 6. Verify deployment
+## Part 4 — Verify and connect the frontend
 
-> For ongoing health checks, metrics, and alerting, see [docs/MONITORING.md](./MONITORING.md).
+### Verify the backend
 
 ```bash
-# Health check
-curl https://[your-app].up.railway.app/health
+RAILWAY_URL=https://your-app.up.railway.app
 
-# Should return:
-# {"status":"ok","version":"...","uptime":...}
+# Health check — should return {"status":"ok",...}
+curl "$RAILWAY_URL/health"
 
-# Catalog (empty at first)
-curl https://[your-app].up.railway.app/resources
+# Catalog — should return {"resources":[]} until seeded
+curl "$RAILWAY_URL/resources"
 
 # Admin stats
-curl https://[your-app].up.railway.app/admin/stats \
-  -H "X-Admin-Key: your_admin_key"
+curl "$RAILWAY_URL/admin/stats" -H "X-Admin-Key: your_admin_key"
 ```
 
----
+If `/health` returns `{"status":"ok"}` the backend is live. ✅
 
-## 7. Connect frontend
+### Connect the frontend
 
 Update your Vercel environment variables:
 
 ```env
-VITE_API_URL=https://[your-app].up.railway.app
+VITE_API_URL=https://your-app.up.railway.app
 ```
 
-Redeploy frontend → Vercel dashboard → **Redeploy**.
+Redeploy in the Vercel dashboard: **Deployments → latest → Redeploy**.
 
 ---
 
-## 8. Seed the catalog
+## Seeding the catalog
+
+Run the seed script from the `deploy` repo:
 
 ```bash
-BACKEND_URL=https://[your-app].up.railway.app \
+BACKEND_URL=https://your-app.up.railway.app \
+PUBLISHER1_PUBLIC=G[PUBLISHER1] \
+PUBLISHER2_PUBLIC=G[PUBLISHER2] \
 node scripts/05-seed-catalog.js
 ```
 
+This idempotently publishes the 3 catalog resources and exits non-zero if any
+step fails.
+
 ---
 
-## Estimated costs (testnet phase)
+## Costs (testnet phase)
 
 | Service | Plan | Monthly cost |
 |---------|------|-------------|
-| Railway | Hobby (free $5 credit) | $0 |
+| Railway | Hobby ($5 credit) | $0 |
 | Supabase | Free tier (500 MB DB, 1 GB storage) | $0 |
 | Vercel | Hobby (free) | $0 |
 | **Total** | | **$0** |
 
-The free tiers are sufficient for an SCF testnet demo with <100 daily active users.
+The free tiers are sufficient for an SCF testnet demo with fewer than 100 daily
+active users.
+
+---
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| Build fails | Check the Railway build log — usually a missing env var or npm install error |
+| `config_invalid` in server log | A required env var is missing — check the variables table above and [docs/ENVIRONMENT-VARIABLES.md](./ENVIRONMENT-VARIABLES.md) |
+| `/health` returns 502 | Server crashed on startup — Railway → your service → **Logs** |
+| Database connection error | Verify `DATABASE_URL` — ensure the password is not URL-encoded twice |
+| Supabase connection refused | The Supabase free tier sleeps after inactivity — open the Supabase dashboard to wake it |
+| `curl: (7) Failed to connect` | Service not running — check Railway Logs |
+| `REPLACE_ME_*` / `change-me-*` errors | Run `node scripts/check-env.js --target railway` to find unfilled placeholders |
+| Migrations fail | Confirm `DATABASE_URL` resolves to the correct Supabase project |
+
+---
+
+## Monitoring
+
+Once the backend is live, set up health-check alerting, dashboards, and
+on-call procedures by following [docs/MONITORING.md](./MONITORING.md).

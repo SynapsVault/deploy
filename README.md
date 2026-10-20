@@ -43,6 +43,111 @@ This repo holds deployment tooling only; the application code lives in
 
 ---
 
+## Architecture
+
+### Docker Compose (local development)
+
+```mermaid
+graph TD
+    Browser["Browser / Client"]
+
+    subgraph compose["docker-compose stack (this repo)"]
+        FE["frontend\n(Vite · :8080)"]
+        BE["backend\n(Node.js · :3000)"]
+        MIG["migrate\n(one-shot job)"]
+        PG["postgres\n(PostgreSQL 18 · :5432)"]
+
+        subgraph monitoring["monitoring profile"]
+            PGEXP["postgres-exporter"]
+            PROM["prometheus\n(:9090)"]
+            AM["alertmanager\n(:9093)"]
+            GF["grafana\n(:3001)"]
+        end
+    end
+
+    subgraph external["External services"]
+        SUPABASE["Supabase\n(storage)"]
+        STELLAR["Stellar / Soroban\n(testnet RPC)"]
+        OR["OpenRouter\n(LLM)"]
+    end
+
+    Browser -->|"HTTP :8080"| FE
+    Browser -->|"HTTP :3000"| BE
+    FE -->|"VITE_API_URL"| BE
+    BE -->|"DATABASE_URL"| PG
+    MIG -->|"DATABASE_URL (migrations)"| PG
+    BE -->|"SUPABASE_URL"| SUPABASE
+    BE -->|"SOROBAN_RPC_URL"| STELLAR
+    BE -->|"OPENROUTER_API_KEY"| OR
+
+    PGEXP -->|"scrape"| PG
+    PROM -->|"scrape"| BE
+    PROM -->|"scrape"| PGEXP
+    AM -->|"alerts"| PROM
+    GF -->|"datasource"| PROM
+```
+
+### Kubernetes (production)
+
+```mermaid
+graph TD
+    Browser["Browser / Client"]
+
+    subgraph cluster["Kubernetes cluster  (namespace: synapsvault)"]
+        ING["Ingress\n(nginx / cert-manager)"]
+
+        subgraph fe_svc["frontend"]
+            FE_DEP["Deployment\n(2 replicas)"]
+        end
+
+        subgraph be_svc["backend"]
+            BE_DEP["Deployment\n(2–5 replicas · HPA)"]
+        end
+
+        MIG_JOB["backend-migrate\n(Job — runs before rollout)"]
+
+        subgraph obs["observability"]
+            SM_BE["ServiceMonitor\n(backend)"]
+            SM_FE["ServiceMonitor\n(frontend)"]
+            PR["PrometheusRule\n(alert rules)"]
+        end
+
+        PDB["PodDisruptionBudget"]
+        CM["ConfigMap\n(non-secret env)"]
+        SEC["Secrets\n(DATABASE_URL, keys…)"]
+    end
+
+    subgraph external["External services"]
+        SUPABASE["Supabase\n(Postgres + storage)"]
+        STELLAR["Stellar / Soroban\n(mainnet RPC)"]
+        OR["OpenRouter\n(LLM)"]
+        PROM_OP["Prometheus Operator\n(cluster-level)"]
+        GHCR["GHCR\n(container images)"]
+    end
+
+    Browser -->|"HTTPS"| ING
+    ING -->|"/api"| BE_DEP
+    ING -->|"/"| FE_DEP
+    BE_DEP -->|"DATABASE_URL"| SUPABASE
+    BE_DEP -->|"SUPABASE_URL"| SUPABASE
+    BE_DEP -->|"SOROBAN_RPC_URL"| STELLAR
+    BE_DEP -->|"OPENROUTER_API_KEY"| OR
+    MIG_JOB -->|"DATABASE_URL"| SUPABASE
+    CM -->|"env injection"| BE_DEP
+    CM -->|"env injection"| FE_DEP
+    SEC -->|"env injection"| BE_DEP
+    SEC -->|"env injection"| MIG_JOB
+    PDB -->|"guards"| BE_DEP
+    SM_BE -->|"scraped by"| PROM_OP
+    SM_FE -->|"scraped by"| PROM_OP
+    PR -->|"loaded by"| PROM_OP
+    GHCR -->|"image pull"| FE_DEP
+    GHCR -->|"image pull"| BE_DEP
+    GHCR -->|"image pull"| MIG_JOB
+```
+
+---
+
 ## Local Development (Docker Compose)
 
 Clone the application repos next to this one, then bring up the full stack
@@ -202,17 +307,15 @@ Save the contract IDs from `contract-ids.env` — you need them for the backend.
 
 ### Step 5 — Deploy backend to Railway
 
-Follow: [docs/railway-deploy.md](./docs/railway-deploy.md)
+Follow the canonical guide: **[docs/railway-deploy.md](./docs/railway-deploy.md)**
 
-Key env vars to set in Railway:
+Before deploying, verify your `.env` has no unfilled placeholders:
+```bash
+node scripts/check-env.js --target railway
 ```
-DATABASE_URL         = your Supabase connection string
-STELLAR_CONTRACT_VAULT_REGISTRY  = from contract-ids.env
-STELLAR_CONTRACT_ACCESS_LEASE    = from contract-ids.env
-STELLAR_CONTRACT_SUBSCRIPTION    = from contract-ids.env
-STELLAR_SECRET_KEY   = your BACKEND secret key
-ADMIN_API_KEY        = openssl rand -hex 32
-```
+
+The guide covers Supabase setup, Railway project creation, all required
+environment variables, migrations, verification, and troubleshooting.
 
 ### Step 6 — Run migrations
 

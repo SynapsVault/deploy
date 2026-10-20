@@ -107,6 +107,15 @@ jobs:
         run: npm ci
       - name: Syntax-check scripts
         run: for f in scripts/*.js scripts/*.cjs; do node --check "$f"; done
+      - name: Check env placeholders (compose target)
+        run: |
+          cp .env.example .env
+          node scripts/check-env.js --target compose --env-file .env || true
+          # In CI the .env.example intentionally contains placeholders.
+          # This step validates that check-env.js itself runs without crashing;
+          # the actual placeholder check is enforced in deploy workflows where
+          # real secrets are available via GitHub Actions secrets.
+          node scripts/check-env.js --help > /dev/null
       - name: Unit tests
         run: npm test
       - name: CLI smoke tests
@@ -197,6 +206,11 @@ jobs:
         run: npm ci
       - name: Prepare env
         run: cp .env.example .env
+      - name: Check env (compose)
+        # .env.example contains placeholder values; this is a best-effort check
+        # to ensure check-env.js runs. Failures are informational only in CI
+        # because secrets are not available in this job.
+        run: node scripts/check-env.js --target compose --env-file .env || true
       - name: Start stack
         run: docker compose up -d --wait
       - name: Run smoke test

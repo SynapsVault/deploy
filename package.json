@@ -2,8 +2,13 @@
   "name": "handsoff",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "check:links": "markdown-link-check -q -p README.md && markdown-link-check -q -r docs"
+    "check:env": "node scripts/check-env.js",
+    "check:env:compose": "node scripts/check-env.js --target compose",
+    "check:env:k8s": "node scripts/check-env.js --target k8s",
+    "check:env:railway": "node scripts/check-env.js --target railway",
+    "check:links": "markdown-link-check -q -p README.md && markdown-link-check -q -r docs",
     "step1": "node scripts/01-generate-keypairs.js",
     "step2": "node scripts/02-fund-accounts.js",
     "step3": "bash scripts/03-deploy-contracts.sh",
