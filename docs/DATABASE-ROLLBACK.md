@@ -78,7 +78,30 @@ If the reverse SQL fails, nothing is committed. The manual equivalent is:
 
 ## 3. Roll Back to a Specific Migration
 
-To roll back multiple migrations to a target point:
+To roll back more than one migration in a single run, pass `--steps` with a
+reverse SQL file that undoes each of those migrations, newest first.
+[`scripts/db-rollback.sh`](../scripts/db-rollback.sh) applies that file and
+deletes the same number of newest rows from `drizzle.__drizzle_migrations`
+in one transaction:
+
+```bash
+# Rehearse reverting the three newest migrations
+DATABASE_URL=... ./scripts/db-rollback.sh \
+  --file drizzle/rollback_to_<target>.sql \
+  --steps 3 \
+  --dry-run
+
+# Apply (prompts for confirmation when --env production, unless --yes)
+DATABASE_URL=... ./scripts/db-rollback.sh \
+  --file drizzle/rollback_to_<target>.sql \
+  --steps 3 \
+  --env production
+```
+
+`--steps` defaults to `1`. The script refuses to continue when fewer than
+`<n>` migrations are recorded.
+
+The manual equivalent is:
 
 1. **List applied migrations in reverse chronological order:**
 

@@ -68,6 +68,28 @@ usage() {
   sed -n '2,43p' "$0" | sed 's/^# \{0,1\}//'
 }
 
+# Read a string field from the manifest written by backup.sh. The manifest has
+# one "key": "value" pair per line, so a sed match is enough (no jq needed).
+manifest_field() {
+  local field="$1" file="$2"
+  sed -n "s/^ *\"$field\": *\"\\([^\"]*\\)\".*/\\1/p" "$file" | head -n 1
+}
+
+# Replace the database name in a postgres:// URL, keeping any query string.
+with_database() {
+  local url="$1" db="$2"
+  if [[ "$url" =~ ^(postgres(ql)?://[^/?]+)(/[^?]*)?(\?.*)?$ ]]; then
+    printf '%s/%s%s' "${BASH_REMATCH[1]}" "$db" "${BASH_REMATCH[4]}"
+  else
+    die 1 "cannot parse database URL for --verify-only (expected postgres://...)"
+  fi
+}
+
+# Sourced by bats: expose with_database and manifest_field, then stop.
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  return 0
+fi
+
 # ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
@@ -255,23 +277,6 @@ latest_backup_name() {
         | tail -n 1
       ;;
   esac
-}
-
-# Read a string field from the manifest written by backup.sh. The manifest has
-# one "key": "value" pair per line, so a sed match is enough (no jq needed).
-manifest_field() {
-  local field="$1" file="$2"
-  sed -n "s/^ *\"$field\": *\"\\([^\"]*\\)\".*/\\1/p" "$file" | head -n 1
-}
-
-# Replace the database name in a postgres:// URL, keeping any query string.
-with_database() {
-  local url="$1" db="$2"
-  if [[ "$url" =~ ^(postgres(ql)?://[^/?]+)(/[^?]*)?(\?.*)?$ ]]; then
-    printf '%s/%s%s' "${BASH_REMATCH[1]}" "$db" "${BASH_REMATCH[4]}"
-  else
-    die 1 "cannot parse database URL for --verify-only (expected postgres://...)"
-  fi
 }
 
 # ---------------------------------------------------------------------------
