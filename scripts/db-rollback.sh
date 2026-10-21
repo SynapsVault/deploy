@@ -2,16 +2,18 @@
 #
 # db-rollback.sh
 #
-# Reverts the most recent Drizzle migration by applying a hand-written reverse
-# SQL file and removing the migration's row from drizzle.__drizzle_migrations,
+# Reverts one or more of the newest Drizzle migrations by applying a hand-written
+# reverse SQL file and removing those rows from drizzle.__drizzle_migrations,
 # both inside a single transaction. Drizzle has no built-in "down" migrations;
 # see docs/DATABASE-ROLLBACK.md for the full runbook.
 #
 # Usage:
-#   ./scripts/db-rollback.sh --file <reverse.sql> [options]
+#   ./scripts/db-rollback.sh --file <reverse.sql> [--steps <n>] [options]
 #
 # Options:
-#   -f, --file <path>    Required. Reverse SQL that undoes the latest migration.
+#   -f, --file <path>    Required. Reverse SQL that undoes the migrations being
+#                        reverted, newest first.
+#   --steps <n>          How many newest migrations to revert. Default: 1.
 #   -e, --env <name>     Environment name (e.g. development, staging, production).
 #                        Defaults to the value of NODE_ENV, or "development".
 #   -n, --dry-run        Show what would be rolled back, then roll the
@@ -48,6 +50,7 @@ ASSUME_YES="false"
 DRY_RUN="false"
 SKIP_BACKUP="false"
 REVERSE_SQL=""
+STEPS="1"
 BACKUP_DIR="${ROLLBACK_BACKUP_DIR:-./backups}"
 
 log() {
@@ -59,7 +62,7 @@ error() {
 }
 
 usage() {
-  sed -n '2,39p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 while [ "$#" -gt 0 ]; do
@@ -78,6 +81,14 @@ while [ "$#" -gt 0 ]; do
         exit 1
       fi
       REVERSE_SQL="$2"
+      shift 2
+      ;;
+    --steps)
+      if [ -z "${2:-}" ]; then
+        error "Option $1 requires an argument."
+        exit 1
+      fi
+      STEPS="$2"
       shift 2
       ;;
     -n|--dry-run)
@@ -119,6 +130,11 @@ if [ ! -r "${REVERSE_SQL}" ]; then
   exit 1
 fi
 
+if ! [ "${STEPS}" -ge 1 ] 2>/dev/null; then
+  error "--steps must be an integer greater than or equal to 1."
+  exit 1
+fi
+
 if ! command -v psql >/dev/null 2>&1; then
   error "psql is not available. Install the PostgreSQL client before running ${SCRIPT_NAME}."
   exit 1
@@ -126,19 +142,31 @@ fi
 
 log "Environment: ${ENVIRONMENT}"
 
-LAST_MIGRATION="$(psql "${DATABASE_URL}" -X -At -v ON_ERROR_STOP=1 -c \
+MIGRATIONS="$(psql "${DATABASE_URL}" -X -At -v ON_ERROR_STOP=1 -c \
   "SELECT id || ' (hash ' || hash || ', created_at ' || created_at || ')'
-     FROM drizzle.__drizzle_migrations ORDER BY created_at DESC, id DESC LIMIT 1;")" || {
+     FROM drizzle.__drizzle_migrations
+    ORDER BY created_at DESC, id DESC
+    LIMIT ${STEPS};")" || {
   error "Could not read drizzle.__drizzle_migrations. Is DATABASE_URL correct?"
   exit 1
 }
 
-if [ -z "${LAST_MIGRATION}" ]; then
+if [ -z "${MIGRATIONS}" ]; then
   error "No applied migrations recorded in drizzle.__drizzle_migrations; nothing to roll back."
   exit 1
 fi
 
-log "Latest applied migration: ${LAST_MIGRATION}"
+MIGRATION_COUNT="$(printf '%s\n' "${MIGRATIONS}" | grep -c .)"
+if [ "${MIGRATION_COUNT}" -lt "${STEPS}" ]; then
+  error "Only ${MIGRATION_COUNT} applied migration(s); --steps ${STEPS} needs that many."
+  exit 1
+fi
+
+log "Reverting ${STEPS} newest migration(s):"
+printf '%s\n' "${MIGRATIONS}" | while IFS= read -r line; do
+  [ -n "${line}" ] || continue
+  log "  ${line}"
+done
 log "Reverse SQL: ${REVERSE_SQL}"
 
 if [ "${ENVIRONMENT}" = "production" ] && [ "${ASSUME_YES}" != "true" ]; then
@@ -180,7 +208,7 @@ else
   FINISH="COMMIT"
 fi
 
-log "Reverting the most recent migration..."
+log "Reverting ${STEPS} migration(s)..."
 
 # Run the reverse SQL and the journal update in one transaction so a failure
 # leaves both the schema and drizzle.__drizzle_migrations untouched.
@@ -189,8 +217,8 @@ psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 \
   -c "BEGIN;" \
   -f "${REVERSE_SQL}" \
   -c "DELETE FROM drizzle.__drizzle_migrations
-        WHERE id = (SELECT id FROM drizzle.__drizzle_migrations
-                    ORDER BY created_at DESC, id DESC LIMIT 1);" \
+        WHERE id IN (SELECT id FROM drizzle.__drizzle_migrations
+                     ORDER BY created_at DESC, id DESC LIMIT ${STEPS});" \
   -c "${FINISH};"
 STATUS=$?
 set -e
