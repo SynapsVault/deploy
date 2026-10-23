@@ -56,7 +56,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push backend image
         id: build-backend
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@v6
         with:
           context: ./src/backend
           file: ./backend/Dockerfile
@@ -72,7 +72,7 @@ jobs:
 
       - name: Build and push backend migrate image
         id: build-backend-migrate
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@v6
         with:
           context: ./src/backend
           file: ./backend/Dockerfile
@@ -94,7 +94,7 @@ jobs:
       # window.__APP_CONFIG__) and supplied by the k8s manifests at deploy time.
       - name: Build and push frontend image
         id: build-frontend
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@v6
         with:
           context: ./src/frontend
           file: ./frontend/Dockerfile

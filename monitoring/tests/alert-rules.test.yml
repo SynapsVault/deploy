@@ -4,7 +4,6 @@ rule_files:
 evaluation_interval: 1m
 
 tests:
-  # BackendDown: backend target is down for longer than the alert's `for` window.
   - interval: 1m
     input_series:
       - series: 'up{job="backend",instance="backend:8080"}'
@@ -15,13 +14,14 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: critical
+              team: backend
               job: backend
               instance: backend:8080
             exp_annotations:
-              summary: Backend is down
-              description: Backend target backend:8080 has been down for more than 5 minutes.
+              summary: Backend instance backend:8080 is down
+              description: Backend target backend:8080 (job backend) has been unreachable for more than 1 minute.
+              runbook_url: https://github.com/example/soroban-backend/blob/main/docs/runbooks/backend-down.md
 
-  # BackendDown must not fire while the backend is up.
   - interval: 1m
     input_series:
       - series: 'up{job="backend",instance="backend:8080"}'
@@ -31,7 +31,6 @@ tests:
         alertname: BackendDown
         exp_alerts: []
 
-  # High 5xx rate: >5% of requests returning 5xx over the rate window.
   - interval: 1m
     input_series:
       - series: 'http_requests_total{job="backend",status="500"}'
@@ -40,16 +39,16 @@ tests:
         values: '0+540x10'
     alert_rule_test:
       - eval_time: 10m
-        alertname: HighErrorRate
+        alertname: HighHttp5xxErrorRate
         exp_alerts:
           - exp_labels:
-              severity: warning
-              job: backend
+              severity: critical
+              team: backend
             exp_annotations:
-              summary: High 5xx error rate
-              description: More than 5% of requests to backend are failing with 5xx over the last 5 minutes.
+              summary: High HTTP 5xx error rate (10%)
+              description: More than 5% of backend HTTP requests have returned 5xx responses over the last 5 minutes.
+              runbook_url: https://github.com/example/soroban-backend/blob/main/docs/runbooks/http-5xx.md
 
-  # High 5xx rate must not fire when the error ratio is low.
   - interval: 1m
     input_series:
       - series: 'http_requests_total{job="backend",status="500"}'
@@ -58,30 +57,30 @@ tests:
         values: '0+999x10'
     alert_rule_test:
       - eval_time: 10m
-        alertname: HighErrorRate
+        alertname: HighHttp5xxErrorRate
         exp_alerts: []
 
-  # BackupStale: last successful backup is older than the staleness threshold.
   - interval: 1m
     input_series:
-      - series: 'backup_last_success_timestamp_seconds'
-        values: '0x10'
+      - series: 'soroban_backup_last_success_timestamp_seconds'
+        values: '-100000x30'
     alert_rule_test:
-      - eval_time: 10m
+      - eval_time: 30m
         alertname: BackupStale
         exp_alerts:
           - exp_labels:
-              severity: critical
+              severity: warning
+              team: backend
             exp_annotations:
-              summary: Backup is stale
-              description: No successful backup has completed in the last 24 hours.
+              summary: "Backup is stale for "
+              description: "The last successful backup for  was more than 26 hours ago, exceeding the expected backup interval."
+              runbook_url: https://github.com/example/soroban-backend/blob/main/docs/runbooks/backup-stale.md
 
-  # BackupStale must not fire when a recent backup exists.
   - interval: 1m
     input_series:
-      - series: 'backup_last_success_timestamp_seconds'
-        values: 'stale'
+      - series: 'soroban_backup_last_success_timestamp_seconds'
+        values: '0+1x30'
     alert_rule_test:
-      - eval_time: 10m
+      - eval_time: 30m
         alertname: BackupStale
         exp_alerts: []

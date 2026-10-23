@@ -1,0 +1,7 @@
+# Documentation contains local service URLs and intentionally unfilled examples.
+# They are instructions, not links that CI can resolve.
+exclude = [
+  '^https?://localhost',
+  '^https://stellar\\.expert/explorer/testnet/account/G(?:%5B|\\[)DEPLOYER(?:%5D|\\])$',
+  '^https://[^ ]*\\[(?:your|YOUR|ref|REF)',
+]

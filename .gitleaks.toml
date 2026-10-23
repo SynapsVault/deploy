@@ -1,0 +1,7 @@
+[allowlist]
+description = "Known non-secret API-key-shaped placeholders in examples and offline test fixtures"
+paths = [
+  '''scripts/05-seed-catalog.js''',
+  '''test/seed-and-smoke.test.cjs''',
+  '''docs/DEPLOY-BACKEND-GUIDE.md''',
+]

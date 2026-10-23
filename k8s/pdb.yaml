@@ -6,6 +6,7 @@ metadata:
     app: backend
 spec:
   minAvailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
   selector:
     matchLabels:
       app: backend
@@ -18,6 +19,7 @@ metadata:
     app: frontend
 spec:
   minAvailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
   selector:
     matchLabels:
       app: frontend
