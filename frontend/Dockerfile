@@ -3,18 +3,8 @@
 # that repository; this file lives in the deploy repo.
 
 ARG NODE_VERSION=22
-# The frontend repo has no lockfile and conflicting peer dependencies, which
-# crash npm's resolver; --legacy-peer-deps works around it until fixed upstream.
-#
-# TODO(#102): drop --legacy-peer-deps once the frontend repo ships a lockfile
-# and resolves its peer conflicts. Tracked upstream at
-# https://github.com/SynapsVault/frontend/issues (lockfile + peer deps).
-# crash npm's resolver; --legacy-peer-deps works around it until fixed upstream
-# (tracked in https://github.com/SynapsVault/frontend/issues).
+# Override when upstream peer dependency conflicts are resolved.
 ARG NPM_FLAGS=--legacy-peer-deps
-# Once the upstream lockfile and peer dependencies are resolved, drop the
-# --legacy-peer-deps flag (override with --build-arg NPM_FLAGS=--legacy-peer-deps if needed).
-ARG NPM_FLAGS=""
 
 # Stage 1: Build the Vite application
 FROM node:${NODE_VERSION}-alpine AS build
@@ -45,10 +35,25 @@ RUN npm run build
 # Stage 2: Serve static assets via nginx
 FROM nginx:1.31-alpine AS runtime
 
-# Replace the default server with the app's config (SPA fallback, caching,
-# security headers) from the frontend repository.
-RUN rm -f /etc/nginx/conf.d/default.conf
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Serve the SPA on an unprivileged port; runtime config lives in writable /tmp.
+RUN printf '%s\n' \
+    'pid /tmp/nginx.pid;' \
+    'events {}' \
+    'http {' \
+    '  include /etc/nginx/mime.types;' \
+    '  client_body_temp_path /tmp/client_temp;' \
+    '  proxy_temp_path /tmp/proxy_temp;' \
+    '  fastcgi_temp_path /tmp/fastcgi_temp;' \
+    '  uwsgi_temp_path /tmp/uwsgi_temp;' \
+    '  scgi_temp_path /tmp/scgi_temp;' \
+    '  server {' \
+    '    listen 8080;' \
+    '    root /usr/share/nginx/html;' \
+    '    location = /config.js { alias /tmp/config.js; add_header Cache-Control "no-store"; }' \
+    '    location / { try_files $uri $uri/ /index.html; }' \
+    '  }' \
+    '}' > /etc/nginx/nginx.conf \
+    && apk add --no-cache jq
 
 # Copy built assets from the build stage
 COPY --from=build /app/dist /usr/share/nginx/html
@@ -65,20 +70,14 @@ ENV APP_API_URL=/api \
 RUN printf '%s\n' \
     '#!/bin/sh' \
     'set -eu' \
-    'cat > /usr/share/nginx/html/config.js <<EOF' \
-    'window.__APP_CONFIG__ = {' \
-    '  apiUrl: "${APP_API_URL}",' \
-    '  network: "${APP_NETWORK}",' \
-    '  sentryDsn: "${APP_SENTRY_DSN}"' \
-    '};' \
-    'EOF' \
-    'exec "$@"' \
+    'jq -n --arg apiUrl "$APP_API_URL" --arg network "$APP_NETWORK" --arg sentryDsn "$APP_SENTRY_DSN" "{apiUrl: \$apiUrl, network: \$network, sentryDsn: \$sentryDsn}" | sed "1s/^/window.__APP_CONFIG__ = /; \$s/\$/;/" > /tmp/config.js' \
     > /docker-entrypoint.d/40-generate-config.sh \
     && chmod +x /docker-entrypoint.d/40-generate-config.sh
 
-EXPOSE 80
+USER 101
+EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget -qO- http://127.0.0.1/ >/dev/null || exit 1
+    CMD wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]

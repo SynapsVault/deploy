@@ -46,16 +46,16 @@ function resolvePublisherWallets(env = process.env) {
 
   return [
     {
-      name:          "SynapsVault Research Lab",
-      email:         "research@synapsvault.demo",
+      name: "SynapsVault Research Lab",
+      email: "research@synapsvault.demo",
       walletAddress: pub1,
-      envApiKey:     env.PUBLISHER1_API_KEY ?? "",
+      envApiKey: env.PUBLISHER1_API_KEY ?? "",
     },
     {
-      name:          "SynapsVault Data Studio",
-      email:         "data@synapsvault.demo",
+      name: "SynapsVault Data Studio",
+      email: "data@synapsvault.demo",
       walletAddress: pub2,
-      envApiKey:     env.PUBLISHER2_API_KEY ?? "",
+      envApiKey: env.PUBLISHER2_API_KEY ?? "",
     },
   ];
 }
@@ -63,35 +63,35 @@ function resolvePublisherWallets(env = process.env) {
 export const RESOURCES = [
   {
     publisherIdx: 0,
-    title:        "Stellar Soroban Smart Contract Patterns (2025 Edition)",
+    title: "Stellar Soroban Smart Contract Patterns (2025 Edition)",
     description:
       "A curated reference of production-tested Soroban contract patterns: " +
       "access control, upgradeable proxies, time-locks, circuit breakers, " +
       "and multi-sig. Includes annotated Rust source for each pattern.",
-    price:        "0.50",
-    externalUrl:  "https://developers.stellar.org/docs/build/smart-contracts/example-contracts",
+    price: "0.50",
+    externalUrl: "https://developers.stellar.org/docs/build/smart-contracts/example-contracts",
     resourceType: "link",
   },
   {
     publisherIdx: 1,
-    title:        "Stellar Network Analytics Dataset — Q1 2025",
+    title: "Stellar Network Analytics Dataset — Q1 2025",
     description:
       "Aggregated on-chain metrics for Stellar mainnet: daily active accounts, " +
       "payment volume by asset, DEX trade counts, and Soroban contract invocations. " +
       "CSV format, 90 days of data, updated weekly.",
-    price:        "1.00",
-    externalUrl:  "https://dashboard.stellar.org",
+    price: "1.00",
+    externalUrl: "https://dashboard.stellar.org",
     resourceType: "link",
   },
   {
     publisherIdx: 0,
-    title:        "x402 Payment Protocol — Integration Guide",
+    title: "x402 Payment Protocol — Integration Guide",
     description:
       "Step-by-step integration guide for the x402 HTTP payment protocol on Stellar. " +
       "Covers server middleware setup, client-side fetch wrapper, USDC settlement, " +
       "and receipt verification. Includes working Node.js + React examples.",
-    price:        "0.25",
-    externalUrl:  "https://github.com/x402-org/x402",
+    price: "0.25",
+    externalUrl: "https://github.com/x402-org/x402",
     resourceType: "link",
   },
 ];
@@ -100,7 +100,11 @@ export const RESOURCES = [
 async function post(path, body, apiKey) {
   const headers = { "Content-Type": "application/json" };
   if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
-  const res  = await fetch(`${BASE}${path}`, { method: "POST", headers, body: JSON.stringify(body) });
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
   const text = await res.text();
   let json;
   try {
@@ -117,7 +121,7 @@ async function post(path, body, apiKey) {
 }
 
 async function get(path) {
-  const res  = await fetch(`${BASE}${path}`);
+  const res = await fetch(`${BASE}${path}`);
   const text = await res.text();
   let json;
   try {
@@ -180,12 +184,13 @@ for (let i = 0; i < publishers.length; i++) {
 
   try {
     console.log(`  Creating publisher: ${pub.name}…`);
-    const result = await post(
-      "/publishers",
-      { name: pub.name, email: pub.email, walletAddress: pub.walletAddress }
-    );
+    const result = await post("/publishers", {
+      name: pub.name,
+      email: pub.email,
+      walletAddress: pub.walletAddress,
+    });
     apiKeys.push(result.apiKey ?? pub.envApiKey);
-    console.log(`  ✅ ${pub.name} — API key: ${(result.apiKey ?? "").slice(0, 12)}…`);
+    console.log(`  ✅ ${pub.name} — publisher ready`);
   } catch (err) {
     if (err.status === 409 || /already exists/i.test(err.message)) {
       console.warn(`  ℹ  ${pub.name}: publisher already exists`);
@@ -226,7 +231,7 @@ for (const r of RESOURCES) {
     const result = await post(
       "/resources",
       { title: r.title, description: r.description, price: r.price, externalUrl: r.externalUrl },
-      apiKey,
+      apiKey
     );
     published.push(result);
     existingItems.push(result);
@@ -242,10 +247,12 @@ for (const r of RESOURCES) {
 console.log("\n  Verifying catalog…");
 try {
   const catalog = await get("/resources?listed=true");
-  const items   = extractCatalogItems(catalog);
+  const items = extractCatalogItems(catalog);
   console.log(`  ✅ Catalog has ${items.length} listed resource(s)\n`);
   if (items.length < RESOURCES.length) {
-    console.error(`  ❌ Expected at least ${RESOURCES.length} catalog resources, found ${items.length}`);
+    console.error(
+      `  ❌ Expected at least ${RESOURCES.length} catalog resources, found ${items.length}`
+    );
     failures++;
   }
 } catch (err) {
@@ -254,7 +261,9 @@ try {
 }
 
 if (failures > 0 || published.length < RESOURCES.length) {
-  console.error(`\n❌ Seeding failed (${failures} error(s), ${published.length}/${RESOURCES.length} resources ready).\n`);
+  console.error(
+    `\n❌ Seeding failed (${failures} error(s), ${published.length}/${RESOURCES.length} resources ready).\n`
+  );
   process.exit(1);
 }
 

@@ -41,7 +41,6 @@ const {
   TransactionBuilder,
   Operation,
   Address,
-  nativeToScVal,
   scValToNative,
   rpc,
   xdr,
@@ -125,7 +124,9 @@ function parseArgs(argv) {
   }
 
   if (args.network && !NETWORK_PASSPHRASES[args.network]) {
-    throw new Error(`Invalid --network value: ${args.network} (expected testnet|mainnet|futurenet or set SOROBAN_RPC_URL for local)`);
+    throw new Error(
+      `Invalid --network value: ${args.network} (expected testnet|mainnet|futurenet or set SOROBAN_RPC_URL for local)`
+    );
   }
 
   return args;
@@ -174,7 +175,9 @@ function validateEnv(args) {
 
   if (!NETWORK_PASSPHRASES[network]) {
     if (!process.env.SOROBAN_RPC_URL) {
-      throw new Error(`Invalid NETWORK value: ${network} (expected testnet|mainnet|futurenet or set SOROBAN_RPC_URL for local)`);
+      throw new Error(
+        `Invalid NETWORK value: ${network} (expected testnet|mainnet|futurenet or set SOROBAN_RPC_URL for local)`
+      );
     }
   }
 
@@ -296,14 +299,13 @@ async function preflightChecks({ server, keypair, network, contracts, dryRun }) 
   if (dryRun) {
     log.warn('Dry run enabled: no transactions will be submitted.');
   }
-
 }
 
 // ---------------------------------------------------------------------------
 // Transaction helpers
 // ---------------------------------------------------------------------------
 
-async function submitTransaction({ server, tx, keypair, networkPassphrase, dryRun, label }) {
+async function submitTransaction({ server, tx, keypair, dryRun, label }) {
   if (dryRun) {
     log.info(`[dry-run] Skipping submission: ${label}`);
     return null;
@@ -394,7 +396,14 @@ async function uploadWasm({ server, keypair, networkPassphrase, wasmPath, dryRun
 // Contract deployment
 // ---------------------------------------------------------------------------
 
-async function deployContract({ server, keypair, networkPassphrase, wasmHash, dryRun, contractName }) {
+async function deployContract({
+  server,
+  keypair,
+  networkPassphrase,
+  wasmHash,
+  dryRun,
+  contractName,
+}) {
   log.step(`Deploying contract "${contractName}"`);
 
   if (dryRun) {
@@ -438,7 +447,15 @@ async function deployContract({ server, keypair, networkPassphrase, wasmHash, dr
 // Contract initialization
 // ---------------------------------------------------------------------------
 
-async function initContract({ server, keypair, networkPassphrase, contractId, adminAddress, dryRun, contractName }) {
+async function initContract({
+  server,
+  keypair,
+  networkPassphrase,
+  contractId,
+  adminAddress,
+  dryRun,
+  contractName,
+}) {
   log.step(`Initializing contract "${contractName}"`);
 
   if (dryRun) {
@@ -453,9 +470,7 @@ async function initContract({ server, keypair, networkPassphrase, contractId, ad
     fee: '1000000',
     networkPassphrase,
   })
-    .addOperation(
-      contract.call('init', Address.fromString(adminAddress).toScVal())
-    )
+    .addOperation(contract.call('init', Address.fromString(adminAddress).toScVal()))
     .setTimeout(180)
     .build();
 
@@ -496,29 +511,28 @@ async function verifyContract({ server, contractId, dryRun, contractName, expect
   log.ok(`Verified "${contractName}" exists on-chain at ${contractId}`);
 
   if (expectedAdmin) {
-    try {
-      const contractData = ledgerEntries.val;
-      const storageData = contractData.contractData();
-      if (storageData && storageData.val() && storageData.val().sym()) {
-        const dataMap = storageData.val().map();
-        if (dataMap) {
-          for (const entry of dataMap) {
-            const key = entry.key();
-            if (key.sym() && key.sym().toString() === 'admin') {
-              const adminVal = entry.val();
-              const admin = scValToNative(adminVal);
-              if (admin !== expectedAdmin) {
-                throw new Error(`Contract "${contractName}" admin mismatch: expected ${expectedAdmin}, got ${admin}`);
-              }
-              log.ok(`Verified "${contractName}" admin is ${expectedAdmin}`);
-              return;
-            }
-          }
-        }
-      }
-    } catch (e) {
-      log.warn(`Could not verify admin for "${contractName}": ${e.message}`);
+    // SDK 17 exposes XDR union values and struct fields as properties.
+    const storage = ledgerEntries.val.value?.val?.value?.storage ?? [];
+    const entry = storage.find(({ key }) => {
+      const native = scValToNative(key);
+      return (
+        (typeof native === 'string' && native.toLowerCase() === 'admin') ||
+        (Array.isArray(native) &&
+          native.length === 1 &&
+          String(native[0]).toLowerCase() === 'admin')
+      );
+    });
+    if (!entry) {
+      log.warn(`Admin storage key unavailable for "${contractName}"; only existence was verified.`);
+      return;
     }
+    const admin = scValToNative(entry.val);
+    if (admin !== expectedAdmin) {
+      throw new Error(
+        `Contract "${contractName}" admin mismatch: expected ${expectedAdmin}, got ${admin}`
+      );
+    }
+    log.ok(`Verified "${contractName}" admin is ${expectedAdmin}`);
   }
 }
 
@@ -526,32 +540,24 @@ async function verifyContract({ server, contractId, dryRun, contractName, expect
 // Resume logic
 // ---------------------------------------------------------------------------
 
-function loadExistingContractIds() {
-  if (!fs.existsSync(CONTRACT_IDS_FILE)) {
-    return {};
+function loadExistingContractIds(network, filePath = CONTRACT_IDS_FILE) {
+  if (!fs.existsSync(filePath)) return {};
+  const content = fs.readFileSync(filePath, 'utf8');
+  if (network && !content.split('\n').includes(`# Network: ${network}`)) {
+    throw new Error(
+      'Existing contract IDs belong to a different or unknown network; move the file before deploying.'
+    );
   }
-
-  try {
-    const content = fs.readFileSync(CONTRACT_IDS_FILE, { encoding: 'utf8' });
-    const existing = {};
-    for (const line of content.split('\n')) {
-      if (line.startsWith('#') || !line.trim()) {
-        continue;
-      }
-      const [envName, contractId] = line.split('=');
-      if (envName && contractId) {
-        const contractName = envName
-          .replace(/^STELLAR_CONTRACT_/, '')
-          .toLowerCase()
-          .replace(/_/g, '-');
-        existing[contractName] = contractId;
-      }
-    }
-    return existing;
-  } catch (err) {
-    log.warn(`Could not load existing contract IDs: ${err.message}`);
-    return {};
+  const existing = {};
+  for (const line of content.split('\n')) {
+    if (!line.startsWith(CONTRACT_ENV_PREFIX)) continue;
+    const [envName, contractId] = line.trim().split('=');
+    const contract = CONTRACTS.find((c) => contractEnvName(c.name) === envName);
+    if (!contract || !StrKey.isValidContract(contractId))
+      throw new Error(`Invalid saved contract reference: ${envName}`);
+    existing[contract.name] = contractId;
   }
+  return existing;
 }
 
 // ---------------------------------------------------------------------------
@@ -639,7 +645,10 @@ async function main() {
   log.info(`Admin address for init(): ${adminAddress}`);
 
   // Load existing contract IDs (for resume support)
-  const existingIds = loadExistingContractIds();
+  const existingIds = loadExistingContractIds(network);
+  for (const [contractName, contractId] of Object.entries(existingIds)) {
+    await verifyContract({ server, contractId, contractName, dryRun: false });
+  }
   const contractIds = { ...existingIds };
 
   const contractsToDeploy = contracts.filter((c) => !existingIds[c.name]);
@@ -692,14 +701,7 @@ async function main() {
   }
 
   writeContractIds(contractIds, network, args.dryRun);
-  writeDeploymentRecord(
-    contractIds,
-    network,
-    adminAddress,
-    keypair.publicKey(),
-    {},
-    args.dryRun
-  );
+  writeDeploymentRecord(contractIds, network, adminAddress, keypair.publicKey(), {}, args.dryRun);
 
   log.step('Deployment complete');
   for (const [name, id] of Object.entries(contractIds)) {

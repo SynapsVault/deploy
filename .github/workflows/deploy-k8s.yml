@@ -1,52 +1,26 @@
 name: Deploy to Kubernetes
-
 on:
   push:
     branches: [main]
-    paths:
-      - 'k8s/**'
-      - '.github/workflows/deploy-k8s.yml'
-  # Triggered by the backend/frontend repos when their code changes.
-  # Sender workflow (in SynapsVault/backend and SynapsVault/frontend):
-  #
-  #   name: Trigger deploy
-  #   on:
-  #     push:
-  #       branches: [main]
-  #   jobs:
-  #     dispatch:
-  #       runs-on: ubuntu-latest
-  #       steps:
-  #         - uses: peter-evans/repository-dispatch@v3
-  #           with:
-  #             token: ${{ secrets.DEPLOY_DISPATCH_TOKEN }}  # PAT with repo scope on this repo
-  #             repository: SynapsVault/deploy
-  #             event-type: app-updated
-  #             client-payload: |
-  #               {"backend_ref": "${{ github.sha }}", "frontend_ref": "main"}
-  #
-  # The client_payload may include `backend_ref` and/or `frontend_ref` to
-  # build specific refs; omitted values fall back to `main`.
+    paths: ['k8s/**', 'overlays/**', 'backend/**', 'frontend/**', '.github/workflows/deploy-k8s.yml']
   repository_dispatch:
-    types:
-      - app-updated
+    types: [app-updated]
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Target overlay (staging or production)'
-        required: true
-        default: 'staging'
+        description: Target environment
         type: choice
-        options:
-          - staging
-          - production
-
+        default: staging
+        options: [staging, production]
+permissions:
+  contents: read
+concurrency:
+  group: deploy-${{ inputs.environment || 'staging' }}
+  cancel-in-progress: false
 env:
-  KUSTOMIZE_VERSION: '5.4.3'
-
+  REGISTRY: ghcr.io
 jobs:
-  validate:
-    name: Validate Kustomize overlays
+  build-and-push:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -56,46 +30,30 @@ jobs:
       image-tag: ${{ steps.meta.outputs.tag }}
       image-prefix: ${{ steps.meta.outputs.prefix }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install kustomize
-      # The Dockerfiles live here; the application source lives in sibling repos.
-      - name: Checkout backend source
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           repository: SynapsVault/backend
-          ref: ${{ inputs.backend_ref || github.event.client_payload.backend_ref || 'main' }}
+          ref: ${{ github.event.client_payload.backend_ref || 'main' }}
           path: src/backend
-
-      - name: Checkout frontend source
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           repository: SynapsVault/frontend
-          ref: ${{ inputs.frontend_ref || github.event.client_payload.frontend_ref || 'main' }}
+          ref: ${{ github.event.client_payload.frontend_ref || 'main' }}
           path: src/frontend
-
       - name: Compute image names
         id: meta
+        env:
+          REPOSITORY: ${{ github.repository }}
         run: |
-          curl -sSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" \
-            | tar -xz -C /usr/local/bin kustomize
-
-      - name: Build base
-        run: kustomize build k8s/base > /dev/null
-
-      - name: Build staging overlay
-        run: kustomize build k8s/overlays/staging > /dev/null
-
-      - name: Build production overlay
-        run: kustomize build k8s/overlays/production > /dev/null
-
-  deploy:
-    name: Deploy (${{ github.event.inputs.environment || 'staging' }})
-    needs: validate
-    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'staging' }}
+          echo "prefix=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "tag=${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push backend image
         id: build-backend
         uses: docker/build-push-action@v7
@@ -213,236 +171,88 @@ jobs:
           sarif_file: 'trivy-${{ matrix.image }}.sarif'
           category: 'trivy-${{ matrix.image }}'
 
-  deploy-staging:
-    name: Deploy to Staging
+  deploy:
     runs-on: ubuntu-latest
     needs: [build-and-push, scan]
     environment:
-      name: staging
+      name: ${{ inputs.environment || 'staging' }}
       url: ${{ vars.DEPLOY_URL }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Check cluster credentials
-        id: config
-        env:
-          KUBECONFIG_B64: ${{ secrets.KUBECONFIG }}
-        run: |
-          if [[ -z "$KUBECONFIG_B64" ]]; then
-            echo "::warning::Deploy skipped: the KUBECONFIG secret is not configured for the staging environment. Images were still built and pushed."
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
-      - name: Install dependencies
-        run: npm ci
-      - name: Validate environment variables (k8s target)
-        # Fail fast if any required variable is missing or contains a placeholder.
-        # Secrets are mapped from GitHub Actions secrets into the environment so
-        # the script can verify they have been filled in.
+      - run: npm ci --ignore-scripts
+      - uses: azure/setup-kubectl@v4
+      - name: Configure deployment
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-          SUPABASE_STORAGE_BUCKET: ${{ vars.SUPABASE_STORAGE_BUCKET }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
           STELLAR_NETWORK: ${{ vars.STELLAR_NETWORK }}
           SOROBAN_RPC_URL: ${{ vars.SOROBAN_RPC_URL }}
+          STELLAR_HORIZON_URL: ${{ vars.STELLAR_HORIZON_URL }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           USDC_CONTRACT_ID: ${{ vars.USDC_CONTRACT_ID }}
-          PAY_TO: ${{ vars.PAY_TO }}
-          AGENT_SECRET_KEY: ${{ secrets.AGENT_SECRET_KEY }}
-          REGISTRY_SECRET_KEY: ${{ secrets.REGISTRY_SECRET_KEY }}
           STELLAR_CONTRACT_VAULT_REGISTRY: ${{ vars.STELLAR_CONTRACT_VAULT_REGISTRY }}
           STELLAR_CONTRACT_ACCESS_LEASE: ${{ vars.STELLAR_CONTRACT_ACCESS_LEASE }}
           STELLAR_CONTRACT_SUBSCRIPTION: ${{ vars.STELLAR_CONTRACT_SUBSCRIPTION }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          DEPLOY_URL: ${{ vars.DEPLOY_URL }}
           ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
-          STELLAR_SECRET_KEY: ${{ secrets.STELLAR_SECRET_KEY }}
-          STELLAR_PUBLIC_KEY: ${{ vars.STELLAR_PUBLIC_KEY }}
-          POSTGRES_USER: ${{ vars.POSTGRES_USER || 'postgres' }}
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'postgres' }}
-          POSTGRES_DB: ${{ vars.POSTGRES_DB || 'app' }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-        run: node scripts/check-env.js --target k8s
-
-      - name: Set up kubectl
-        if: steps.config.outputs.ready == 'true'
-        uses: azure/setup-kubectl@v5
-        with:
-          version: v1.31.0
-
-      - name: Configure kubeconfig
-        if: steps.config.outputs.ready == 'true'
+        run: |
+          python3 - <<'PYCODE'
+          import os, yaml
+          from pathlib import Path
+          config = Path('k8s/configmap.yaml')
+          data = yaml.safe_load(config.read_text())
+          for key in ('DEPLOY_HOST', 'STELLAR_NETWORK', 'SOROBAN_RPC_URL', 'STELLAR_HORIZON_URL', 'SUPABASE_URL', 'USDC_CONTRACT_ID', 'STELLAR_CONTRACT_VAULT_REGISTRY', 'STELLAR_CONTRACT_ACCESS_LEASE', 'STELLAR_CONTRACT_SUBSCRIPTION', 'DEPLOY_URL', 'ADMIN_API_KEY'):
+              value = os.environ.get(key, '')
+              if not value or 'REPLACE_ME' in value or 'example.com' in value:
+                  raise SystemExit(f'Missing deployment configuration: {key}')
+              if key not in ('DEPLOY_URL', 'ADMIN_API_KEY'):
+                  data['data'][key] = value
+          network = os.environ['STELLAR_NETWORK']
+          passphrases = {'testnet': 'Test SDF Network ; September 2015', 'mainnet': 'Public Global Stellar Network ; September 2015', 'futurenet': 'Test SDF Future Network ; October 2022'}
+          if network not in passphrases:
+              raise SystemExit('Invalid STELLAR_NETWORK')
+          data['data']['STELLAR_NETWORK_PASSPHRASE'] = passphrases[network]
+          config.write_text(yaml.safe_dump(data, sort_keys=False))
+          frontend = Path('k8s/frontend-deployment.yaml')
+          docs = list(yaml.safe_load_all(frontend.read_text()))
+          for doc in docs:
+              if doc['kind'] == 'ConfigMap':
+                  doc['data']['APP_NETWORK'] = network
+          frontend.write_text(yaml.safe_dump_all(docs, sort_keys=False))
+          PYCODE
+      - name: Configure cluster access
         env:
           KUBECONFIG_B64: ${{ secrets.KUBECONFIG }}
         run: |
+          test -n "$KUBECONFIG_B64"
           mkdir -p "$HOME/.kube"
-          printf '%s' "$KUBECONFIG_B64" | base64 -d > "$HOME/.kube/config"
-          chmod 600 "$HOME/.kube/config"
-
-      - name: Pin image tags
-        if: steps.config.outputs.ready == 'true'
-        working-directory: ./k8s/overlays/staging
+          (umask 077; printf '%s' "$KUBECONFIG_B64" | base64 -d > "$HOME/.kube/config")
+      - name: Render and deploy
         env:
           PREFIX: ${{ needs.build-and-push.outputs.image-prefix }}
           TAG: ${{ needs.build-and-push.outputs.image-tag }}
+          TARGET: ${{ inputs.environment || 'staging' }}
         run: |
-          kustomize edit set image \
-            "backend=${PREFIX}/backend:${TAG}" \
-            "backend-migrate=${PREFIX}/backend-migrate:${TAG}" \
-            "frontend=${PREFIX}/frontend:${TAG}"
-          kubectl kustomize . | grep -E '^\s+image:'
-
-      - name: Apply manifests
-        if: steps.config.outputs.ready == 'true'
-        run: |
-          kubectl apply -k k8s/overlays/staging
-          kubectl -n synapsvault-staging rollout status deployment/backend --timeout=300s
-          kubectl -n synapsvault-staging rollout status deployment/frontend --timeout=180s
-
+          python3 - <<'PYCODE'
+          import os
+          from pathlib import Path
+          p = Path('k8s/kustomization.yaml')
+          text = p.read_text()
+          for image in ('backend', 'backend-migrate', 'frontend'):
+              text = text.replace(f'ghcr.io/synapsvault/deploy/{image}', f'{os.environ["PREFIX"]}/{image}')
+          p.write_text(text.replace('newTag: 0.0.0', 'newTag: ' + os.environ['TAG']))
+          PYCODE
+          namespace="synapsvault-${TARGET}"
+          kubectl -n "$namespace" delete job backend-migrate --ignore-not-found
+          kubectl apply -k "overlays/${TARGET}"
+          kubectl -n "$namespace" wait --for=condition=complete job/backend-migrate --timeout=180s
+          kubectl -n "$namespace" rollout status deployment/backend --timeout=300s
+          kubectl -n "$namespace" rollout status deployment/frontend --timeout=180s
       - name: Smoke test
-        id: smoke
-        if: steps.config.outputs.ready == 'true'
         env:
-          BASE_URL: ${{ vars.DEPLOY_URL }}
-        run: node scripts/06-smoke-test.js
-
-  deploy-production:
-    name: Deploy to Production
-    runs-on: ubuntu-latest
-    needs: [build-and-push, scan, deploy-staging]
-    environment:
-      name: production
-      url: ${{ vars.DEPLOY_URL }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install kustomize
-        run: |
-          curl -sSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" \
-            | tar -xz -C /usr/local/bin kustomize
-          if [[ -z "$KUBECONFIG_B64" ]]; then
-            echo "::warning::Deploy skipped: the KUBECONFIG secret is not configured for the production environment. Images were still built and pushed."
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Set up kubectl
-        if: steps.config.outputs.ready == 'true'
-        uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v5
-        with:
-          version: v1.31.0
-
-      - name: Configure kubeconfig
-        run: |
-          mkdir -p "$HOME/.kube"
-          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > "$HOME/.kube/config"
-          chmod 600 "$HOME/.kube/config"
-
-      - name: Deploy overlay
-        run: |
-          OVERLAY="${{ github.event.inputs.environment || 'staging' }}"
-          kustomize build "k8s/overlays/${OVERLAY}" | kubectl apply -f -
-      - name: Pin image tags
-        if: steps.config.outputs.ready == 'true'
-        working-directory: ./k8s/overlays/production
-        env:
-          PREFIX: ${{ needs.build-and-push.outputs.image-prefix }}
-          TAG: ${{ needs.build-and-push.outputs.image-tag }}
-        run: |
-          kustomize edit set image \
-            "backend=${PREFIX}/backend:${TAG}" \
-            "backend-migrate=${PREFIX}/backend-migrate:${TAG}" \
-            "frontend=${PREFIX}/frontend:${TAG}"
-          kubectl kustomize . | grep -E '^\s+image:'
-
-      # Runtime configuration for the frontend image. These env vars are read
-      # by the container entrypoint at start to render /config.js, so the same
-      # image can be promoted across environments without a rebuild.
-      - name: Configure frontend runtime env
-        if: steps.config.outputs.ready == 'true'
-        working-directory: ./k8s
-        env:
-          FRONTEND_API_URL: ${{ vars.FRONTEND_API_URL || '/api' }}
-          FRONTEND_NETWORK: ${{ vars.STELLAR_NETWORK || 'testnet' }}
-        run: |
-          kubectl -n synapsvault create configmap frontend-runtime-config \
-            --from-literal=API_URL="$FRONTEND_API_URL" \
-            --from-literal=NETWORK="$FRONTEND_NETWORK" \
-            --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Apply manifests
-        id: apply
-        if: steps.config.outputs.ready == 'true'
-        run: |
-          kubectl apply -k k8s/overlays/production
-          kubectl -n synapsvault delete job backend-migrate --ignore-not-found
-          kubectl apply -k k8s/
-          kubectl -n synapsvault rollout restart deployment/frontend
-          # Track which deployments have been rolled out so a failure can be
-          # rolled back precisely. Each successful rollout is recorded.
-          : > "$RUNNER_TEMP/rolled_out"
-          if kubectl -n synapsvault rollout status deployment/backend --timeout=300s; then
-            echo "backend" >> "$RUNNER_TEMP/rolled_out"
-          else
-            echo "backend" >> "$RUNNER_TEMP/failed"
-            exit 1
-          fi
-          if kubectl -n synapsvault rollout status deployment/frontend --timeout=180s; then
-            echo "frontend" >> "$RUNNER_TEMP/rolled_out"
-          else
-            echo "frontend" >> "$RUNNER_TEMP/failed"
-            exit 1
-          fi
-
-      - name: Roll back failed rollout
-        if: failure() && steps.config.outputs.ready == 'true' && steps.apply.outcome == 'failure'
-        run: |
-          {
-            echo "### Rollback"
-            echo ""
-            echo "A rollout failed; attempting \`kubectl rollout undo\` for the affected deployment(s)."
-            echo ""
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          failed_file="$RUNNER_TEMP/failed"
-          if [[ ! -s "$failed_file" ]]; then
-            # Fall back to rolling back both deployments if we cannot tell
-            # which one failed (e.g. the apply step failed before recording).
-            printf 'backend\nfrontend\n' > "$failed_file"
-          fi
-
-          rollback_failed=0
-          while read -r deployment; do
-            [[ -z "$deployment" ]] && continue
-            echo "Rolling back deployment/$deployment..."
-            if kubectl -n synapsvault rollout undo "deployment/$deployment"; then
-              echo "- \`deployment/$deployment\`: rolled back" >> "$GITHUB_STEP_SUMMARY"
-            else
-              echo "- \`deployment/$deployment\`: rollback FAILED" >> "$GITHUB_STEP_SUMMARY"
-              rollback_failed=1
-            fi
-          done < "$failed_file"
-
-          if [[ "$rollback_failed" -ne 0 ]]; then
-            echo "::error::One or more rollbacks failed; manual intervention required."
-            exit 1
-          fi
-          kubectl -n synapsvault wait --for=condition=complete job/backend-migrate --timeout=180s
-          kubectl -n synapsvault rollout status deployment/backend --timeout=300s
-          kubectl -n synapsvault rollout status deployment/frontend --timeout=180s
-
-      - name: Smoke test
-        id: smoke
-        if: steps.config.outputs.ready == 'true'
-        env:
-          BASE_URL: ${{ vars.DEPLOY_URL }}
+          BACKEND_URL: ${{ vars.DEPLOY_URL }}/api
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
         run: node scripts/06-smoke-test.js

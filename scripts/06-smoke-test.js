@@ -18,7 +18,7 @@
  *   node scripts/06-smoke-test.js "$DEPLOY_URL/api"
  */
 
-const BASE      = process.argv[2] ?? process.env.BACKEND_URL ?? "http://localhost:3000";
+const BASE = process.argv[2] ?? process.env.BACKEND_URL ?? "http://localhost:3000";
 const ADMIN_KEY = process.env.ADMIN_API_KEY ?? "change_me";
 
 // When run against a freshly started docker-compose stack, services may still
@@ -108,11 +108,11 @@ await check("x402 paywall blocks unauthenticated access", async () => {
   if (!sampleResourceId) {
     throw new Error("Cannot test paywall: no real resource ID available from catalog");
   }
-  const res = await fetch(
-    `${BASE}/resources/${encodeURIComponent(sampleResourceId)}`,
-    { redirect: "manual" }
-  );
-  if (res.status !== 402) throw new Error(`Expected 402 for resource ${sampleResourceId}, got ${res.status}`);
+  const res = await fetch(`${BASE}/resources/${encodeURIComponent(sampleResourceId)}`, {
+    redirect: "manual",
+  });
+  if (res.status !== 402)
+    throw new Error(`Expected 402 for resource ${sampleResourceId}, got ${res.status}`);
   return `resource ${sampleResourceId} returns 402 as expected`;
 });
 

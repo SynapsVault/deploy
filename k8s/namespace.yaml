@@ -7,15 +7,4 @@ metadata:
     app.kubernetes.io/part-of: synapsvault
     environment: production
   annotations:
-    description: "SynapsVault production namespace"
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: synapsvault-staging
-  labels:
-    app.kubernetes.io/name: synapsvault
-    app.kubernetes.io/part-of: synapsvault
-    environment: staging
-  annotations:
-    description: "SynapsVault staging namespace"
+    description: SynapsVault production namespace

@@ -199,7 +199,8 @@ function printUsage() {
       'anything; it reverts the backend contract-ID references only.',
       '',
       'After a contract deploy, update the STELLAR_CONTRACT_* keys in',
-      'k8s/configmap.yaml and re-apply it (kubectl apply -f k8s/configmap.yaml)',n      'so the committed ConfigMap matches the running config.',
+      'k8s/configmap.yaml and re-apply it (kubectl apply -f k8s/configmap.yaml)',
+      'so the committed ConfigMap matches the running config.',
       '',
     ].join('\n')
   );
@@ -264,3 +265,108 @@ function canonicalContractKey(key, value) {
 
   return null;
 }
+
+function updateEnvFile(filePath, ids, dryRun) {
+  const content = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : '';
+  const seen = new Set();
+  const lines = content
+    .replace(/\n$/, '')
+    .split('\n')
+    .filter((line, i) => content || i > 0);
+  const updated = lines.map((line) => {
+    const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/);
+    if (!match) return line;
+    const key = match[1];
+    const canonical = canonicalContractKey(key, parseEnvFile(line)[key]);
+    if (!canonical || !Object.hasOwn(ids, canonical)) return line;
+    if (key === canonical) seen.add(key);
+    return `${key}=${ids[canonical]}`;
+  });
+  for (const [key, value] of Object.entries(ids)) {
+    if (!seen.has(key)) updated.push(`${key}=${value}`);
+  }
+  if (dryRun) {
+    console.log(`[dry-run] Would update ${path.resolve(filePath)}`);
+    return;
+  }
+  // Rename a protected temporary file so interrupted writes leave the original intact.
+  const temp = `${filePath}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(temp, updated.join('\n') + '\n', { mode: 0o600, flag: 'wx' });
+    fs.renameSync(temp, filePath);
+  } finally {
+    if (fs.existsSync(temp)) fs.unlinkSync(temp);
+  }
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const ids = {};
+  for (const [key, value] of Object.entries(readEnvFile(args.backup))) {
+    const canonical = canonicalContractKey(key, value);
+    if (!canonical) continue;
+    if (!/^STELLAR_CONTRACT_[A-Z0-9_]+$/.test(canonical) || !isValidContractId(value)) {
+      throw new Error(`Invalid contract reference: ${key}`);
+    }
+    if (ids[canonical] && ids[canonical] !== value)
+      throw new Error(`Conflicting IDs for ${canonical}`);
+    ids[canonical] = value;
+  }
+  if (!Object.keys(ids).length) throw new Error('Backup contains no contract IDs');
+  const { rpc, xdr } = require('@stellar/stellar-sdk');
+  const server = new rpc.Server(args.rpcUrl, { allowHttp: args.rpcUrl.startsWith('http://') });
+  try {
+    for (const id of Object.values(ids)) {
+      await server.getContractData(
+        id,
+        xdr.ScVal.scvLedgerKeyContractInstance(),
+        rpc.Durability.Persistent
+      );
+    }
+  } catch (err) {
+    process.exitCode = 2;
+    throw new Error(`On-chain verification failed: ${err.message}`);
+  }
+  try {
+    if (args.configmap && !args.dryRun) {
+      execFileSync(
+        'kubectl',
+        [
+          '--namespace',
+          args.namespace,
+          'patch',
+          'configmap',
+          args.configmap,
+          '--type=merge',
+          '-p',
+          JSON.stringify({ data: ids }),
+        ],
+        { stdio: 'inherit' }
+      );
+    }
+    updateEnvFile(args.envFile, ids, args.dryRun);
+  } catch (err) {
+    process.exitCode = 3;
+    throw err;
+  }
+  console.log(
+    args.dryRun
+      ? 'Rollback verified (dry run).'
+      : 'Contract references restored; restart the backend to apply.'
+  );
+}
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err.message);
+    process.exitCode ||= 1;
+  });
+}
+
+module.exports = {
+  parseEnvFile,
+  isValidContractId,
+  canonicalContractKey,
+  parseArgs,
+  updateEnvFile,
+};

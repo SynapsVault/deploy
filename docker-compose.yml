@@ -22,7 +22,7 @@
 
 services:
   postgres:
-    image: postgres:18-alpine
+    image: postgres:17-alpine
     container_name: app_postgres
     restart: unless-stopped
     environment:
@@ -48,7 +48,7 @@ services:
       context: ${BACKEND_SRC:-../backend}
       # Dockerfile is resolved relative to the build context, so this works
       # regardless of the caller's working directory or shell (no ${PWD}).
-      dockerfile: Dockerfile
+      dockerfile: ${DEPLOY_DOCKERFILES_DIR:-../deploy}/backend/Dockerfile
       target: migrate
     container_name: app_migrate
     environment:
@@ -62,7 +62,7 @@ services:
   backend:
     build:
       context: ${BACKEND_SRC:-../backend}
-      dockerfile: Dockerfile
+      dockerfile: ${DEPLOY_DOCKERFILES_DIR:-../deploy}/backend/Dockerfile
       target: runtime
     container_name: app_backend
     restart: unless-stopped
@@ -91,21 +91,24 @@ services:
   frontend:
     build:
       context: ${FRONTEND_SRC:-../frontend}
-      dockerfile: Dockerfile
+      dockerfile: ${DEPLOY_DOCKERFILES_DIR:-../deploy}/frontend/Dockerfile
       args:
         # Inlined into the bundle at build time; the browser calls the backend
         # directly on its published port.
         VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
         VITE_NETWORK: ${VITE_STELLAR_NETWORK:-testnet}
+    environment:
+      APP_API_URL: ${VITE_API_URL:-http://localhost:3000}
+      APP_NETWORK: ${VITE_STELLAR_NETWORK:-testnet}
     container_name: app_frontend
     restart: unless-stopped
     ports:
-      - "${FRONTEND_PORT:-8080}:80"
+      - "${FRONTEND_PORT:-8080}:8080"
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/ || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10

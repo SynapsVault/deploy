@@ -156,8 +156,9 @@ test('deploy validateEnv resolves RPC, admin and wasm paths', () => {
   // Mainnet has no default RPC URL.
   assert.throws(
     () =>
-      withEnv({ STELLAR_SECRET_KEY: kp.secret(), NETWORK: 'mainnet', SOROBAN_RPC_URL: undefined }, () =>
-        deploy.validateEnv(deploy.parseArgs([]))
+      withEnv(
+        { STELLAR_SECRET_KEY: kp.secret(), NETWORK: 'mainnet', SOROBAN_RPC_URL: undefined },
+        () => deploy.validateEnv(deploy.parseArgs([]))
       ),
     /SOROBAN_RPC_URL/
   );
@@ -254,4 +255,55 @@ test('deploy submitTransaction and pollTransaction handle mocked RPC responses',
     label: 'dry-run-tx',
   });
   assert.equal(dryRes, null);
+});
+
+test('deployment resume rejects contract IDs from another network', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'resume-test-'));
+  const file = path.join(dir, 'ids.env');
+  try {
+    fs.writeFileSync(file, `# Network: testnet\nSTELLAR_CONTRACT_VAULT_REGISTRY=${VALID_ID}\n`);
+    assert.throws(
+      () => deploy.loadExistingContractIds('mainnet', file),
+      /different or unknown network/
+    );
+    assert.deepEqual(deploy.loadExistingContractIds('testnet', file), {
+      'vault-registry': VALID_ID,
+    });
+    fs.writeFileSync(file, '# Network: testnet\nSTELLAR_CONTRACT_VAULT_REGISTRY=invalid\n');
+    assert.throws(() => deploy.loadExistingContractIds('testnet', file), /Invalid saved contract/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('contract verification rejects an unexpected on-chain admin', async () => {
+  const { nativeToScVal } = require('@stellar/stellar-sdk');
+  const server = {
+    getContractData: async () => ({
+      val: {
+        value: {
+          val: {
+            value: {
+              storage: [
+                {
+                  key: nativeToScVal('admin', { type: 'symbol' }),
+                  val: nativeToScVal('wrong-admin'),
+                },
+              ],
+            },
+          },
+        },
+      },
+    }),
+  };
+  await assert.rejects(
+    () =>
+      deploy.verifyContract({
+        server,
+        contractId: VALID_ID,
+        contractName: 'test-contract',
+        expectedAdmin: 'expected-admin',
+      }),
+    /admin mismatch/
+  );
 });

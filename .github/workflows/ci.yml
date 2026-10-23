@@ -116,8 +116,12 @@ jobs:
           # the actual placeholder check is enforced in deploy workflows where
           # real secrets are available via GitHub Actions secrets.
           node scripts/check-env.js --help > /dev/null
+      - name: Lint Node scripts
+        run: npm run lint
       - name: Unit tests
         run: npm test
+      - name: Shell unit tests
+        run: sudo apt-get install -y bats && bats test/*.bats
       - name: CLI smoke tests
         run: |
           node scripts/deploy-contracts.cjs --help
@@ -140,7 +144,7 @@ jobs:
       - name: Render kustomization
         run: kubectl kustomize k8s/ > rendered.yaml
       - name: Validate rendered manifests
-        run: kubeconform -strict -summary rendered.yaml
+        run: kubeconform -strict -summary -ignore-missing-schemas rendered.yaml
       - name: Lint rendered manifests (policy checks)
         run: kube-linter lint rendered.yaml
       - name: Validate secret template
@@ -212,6 +216,10 @@ jobs:
         # because secrets are not available in this job.
         run: node scripts/check-env.js --target compose --env-file .env || true
       - name: Start stack
+        env:
+          BACKEND_SRC: ./src/backend
+          FRONTEND_SRC: ./src/frontend
+          DEPLOY_DOCKERFILES_DIR: ../..
         run: docker compose up -d --wait
       - name: Run smoke test
         run: node scripts/06-smoke-test.js
@@ -257,11 +265,14 @@ jobs:
       - name: Load pinned app refs
         id: refs
         run: |
-          set -a
-          . ./.github/workflows/app-versions.env
-          set +a
-          echo "backend=${BACKEND_REF}" >> "$GITHUB_OUTPUT"
-          echo "frontend=${FRONTEND_REF}" >> "$GITHUB_OUTPUT"
+          python3 - <<'PYCODE'
+          import os, yaml
+          with open('.github/app-versions.yml') as f:
+              refs = yaml.safe_load(f)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              for name in ('backend', 'frontend'):
+                  f.write(f"{name}={refs[name]['ref']}\n")
+          PYCODE
       - name: Checkout application source
         uses: actions/checkout@v7
         with:

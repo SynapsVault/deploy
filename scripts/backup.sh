@@ -26,6 +26,7 @@
 #   3  dependency missing
 
 set -Eeuo pipefail
+umask 077
 
 # ---------------------------------------------------------------------------
 # Configuration & defaults
@@ -37,7 +38,12 @@ BACKUP_DATE_ISO="${BACKUP_DATE_ISO:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 
 # Working directory for staging artifacts.
 WORK_DIR="${BACKUP_WORK_DIR:-$(mktemp -d -t soroban-backup-XXXXXXXX)}"
-CLEANUP_WORK_DIR="${BACKUP_CLEANUP_WORK_DIR:-1}"
+# Caller-owned directories may contain unrelated files; preserve them by default.
+if [[ -n "${BACKUP_WORK_DIR:-}" ]]; then
+  CLEANUP_WORK_DIR="${BACKUP_CLEANUP_WORK_DIR:-0}"
+else
+  CLEANUP_WORK_DIR="${BACKUP_CLEANUP_WORK_DIR:-1}"
+fi
 
 # Artifact naming.
 BACKUP_NAME="${BACKUP_NAME:-soroban-backup-${BACKUP_TIMESTAMP}}"

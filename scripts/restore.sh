@@ -51,6 +51,7 @@
 #   5  verification mismatch
 #
 set -euo pipefail
+umask 077
 
 log() {
   printf '[%s] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*" >&2
@@ -65,7 +66,6 @@ die() {
 
 usage() {
   sed -n '2,47p' "$0" | sed 's/^# \{0,1\}//'
-  sed -n '2,43p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 # Read a string field from the manifest written by backup.sh. The manifest has
@@ -176,7 +176,7 @@ TARGET_DATABASE_URL="${DATABASE_URL_ARG:-${DATABASE_URL:-}}"
 [[ -n "$BUCKET" ]] || die 1 "BACKUP_STORAGE_BUCKET is not set"
 [[ -n "$TARGET_DATABASE_URL" ]] || die 1 "target database URL is not set (use --database-url or DATABASE_URL)"
 
-for tool in psql gzip tar sha256sum; do
+for tool in psql gzip tar sha256sum python3; do
   command -v "$tool" >/dev/null 2>&1 || die 1 "required tool not found: $tool"
 done
 
@@ -288,6 +288,8 @@ if [[ -z "$BACKUP_NAME" ]]; then
   log "no --backup given; using newest backup: $BACKUP_NAME"
 fi
 
+[[ "$BACKUP_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die 1 "invalid backup name"
+
 MANIFEST_PATH="$WORK_DIR/$BACKUP_NAME.manifest.json"
 download_object "$PREFIX/$BACKUP_NAME.manifest.json" "$MANIFEST_PATH"
 
@@ -338,8 +340,9 @@ case "$ENCRYPTION_METHOD" in
     ;;
 esac
 
-EXTRACT_DIR="$WORK_DIR/extracted"
-mkdir -p "$EXTRACT_DIR"
+python3 "$(dirname "${BASH_SOURCE[0]}")/validate-archive.py" "$ARCHIVE_PATH" \
+  || die 3 "archive contains unsafe paths or file types"
+EXTRACT_DIR="$(mktemp -d "$WORK_DIR/extracted.XXXXXXXX")"
 tar -xzf "$ARCHIVE_PATH" -C "$EXTRACT_DIR" || die 3 "archive is not a valid tar.gz"
 
 DUMP_PATH="$EXTRACT_DIR/database.sql.gz"

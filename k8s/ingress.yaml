@@ -31,10 +31,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - $(DEPLOY_HOST)
-      secretName: $(DEPLOY_HOST)-tls
+        - app.example.com
+      secretName: synapsvault-tls
   rules:
-    - host: $(DEPLOY_HOST)
+    - host: app.example.com
       http:
         paths:
           - path: /api(/|$)(.*)
@@ -59,10 +59,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - $(DEPLOY_HOST)
-      secretName: $(DEPLOY_HOST)-tls
+        - app.example.com
+      secretName: synapsvault-tls
   rules:
-    - host: $(DEPLOY_HOST)
+    - host: app.example.com
       http:
         paths:
           - path: /

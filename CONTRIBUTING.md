@@ -21,12 +21,12 @@ configurations, and operational runbooks for the SynapsVault platform.
 
 ### Required tools
 
-| Tool | Version | Purpose |
-|------|---------|---------|
-| Node.js | `>= 22.12.0` | Run and test scripts (`@stellar/stellar-sdk` v17+ requirement) |
-| npm | bundled with Node | Dependency management |
-| Bash | any | Shell scripts in `scripts/*.sh` |
-| ShellCheck | any | Lint shell scripts |
+| Tool       | Version           | Purpose                                                        |
+| ---------- | ----------------- | -------------------------------------------------------------- |
+| Node.js    | `>= 22.12.0`      | Run and test scripts (`@stellar/stellar-sdk` v17+ requirement) |
+| npm        | bundled with Node | Dependency management                                          |
+| Bash       | any               | Shell scripts in `scripts/*.sh`                                |
+| ShellCheck | any               | Lint shell scripts                                             |
 
 Install Node.js via nvm (version is read from `.nvmrc`):
 
@@ -38,13 +38,13 @@ npm ci
 
 ### Optional tools (needed only for full local validation)
 
-| Tool | Purpose |
-|------|---------|
+| Tool                    | Purpose                                      |
+| ----------------------- | -------------------------------------------- |
 | Docker & Docker Compose | Validate and smoke-test `docker-compose.yml` |
-| kubectl | Validate Kubernetes manifests (`k8s/`) |
-| kubeconform | Schema-validate rendered manifests |
-| kube-linter | Policy-lint rendered manifests |
-| promtool / amtool | Validate `monitoring/` config |
+| kubectl                 | Validate Kubernetes manifests (`k8s/`)       |
+| kubeconform             | Schema-validate rendered manifests           |
+| kube-linter             | Policy-lint rendered manifests               |
+| promtool / amtool       | Validate `monitoring/` config                |
 
 ### Local stack setup
 
@@ -63,7 +63,7 @@ docker compose up --build
 Service URLs (configurable via `.env`):
 
 | Service    | URL                   |
-|------------|-----------------------|
+| ---------- | --------------------- |
 | Frontend   | http://localhost:8080 |
 | Backend    | http://localhost:3000 |
 | Postgres   | localhost:5432        |

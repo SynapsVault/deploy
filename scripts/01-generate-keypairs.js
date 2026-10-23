@@ -77,7 +77,7 @@ if (outputFile) {
   // Write to file with restricted permissions (mode 0600: rw-------)
   // This prevents the secrets from being readable by other users or appearing in CI logs
   try {
-    fs.writeFileSync(outputFile, output, { mode: 0o600 });
+    fs.writeFileSync(outputFile, output, { mode: 0o600, flag: "wx" });
     console.log(`✅ Keypairs written to: ${path.resolve(outputFile)}`);
     console.log(`⚠️  File permissions set to 0600 (owner read/write only)`);
     console.log(`📋 Import the keypairs manually into your secure password manager.\n`);

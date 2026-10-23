@@ -39,11 +39,15 @@ function runScript(args, scenario) {
   let stdout = '';
   let stderr = '';
   try {
-    stdout = execFileSync(process.execPath, ['--import', pathToFileURL(FETCH_STUB).href, SCRIPT, ...args], {
-      env: { ...process.env, FRIENDBOT_STUB: JSON.stringify(scenario), FRIENDBOT_STUB_LOG: log },
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    stdout = execFileSync(
+      process.execPath,
+      ['--import', pathToFileURL(FETCH_STUB).href, SCRIPT, ...args],
+      {
+        env: { ...process.env, FRIENDBOT_STUB: JSON.stringify(scenario), FRIENDBOT_STUB_LOG: log },
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }
+    );
   } catch (err) {
     status = err.status ?? 1;
     stdout = err.stdout ?? '';
@@ -72,7 +76,10 @@ test('funds every account and exits 0', () => {
   assert.match(stdout, /Next →/);
   assert.equal(requested.length, 2);
   for (const key of keys) {
-    assert.ok(requested.some((url) => url.includes(`addr=${key}`)), `funded ${key}`);
+    assert.ok(
+      requested.some((url) => url.includes(`addr=${key}`)),
+      `funded ${key}`
+    );
   }
 });
 

@@ -9,19 +9,20 @@
 services:
   backend:
     build:
-      target: development
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      target: build
+    command: npm run dev
     volumes:
-      - ./backend:/app
+      - ${BACKEND_SRC:-../backend}:/app
+      - /app/node_modules
     environment:
-      - ENVIRONMENT=development
+      - NODE_ENV=development
 
   frontend:
     build:
-      target: development
-    command: npm run dev -- --host 0.0.0.0 --port 3000
+      target: build
+    command: npm run dev -- --host 0.0.0.0 --port 8080
     volumes:
-      - ./frontend:/app
+      - ${FRONTEND_SRC:-../frontend}:/app
       - /app/node_modules
     environment:
       - NODE_ENV=development

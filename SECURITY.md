@@ -5,10 +5,10 @@
 Only the latest state of the `main` branch and the active production deployment
 manifests receive security updates.
 
-| Branch / State | Supported |
-|----------------|-----------|
-| `main` (HEAD) | ✅ |
-| Older commits / tags | ❌ |
+| Branch / State       | Supported |
+| -------------------- | --------- |
+| `main` (HEAD)        | ✅        |
+| Older commits / tags | ❌        |
 
 ---
 
@@ -16,14 +16,14 @@ manifests receive security updates.
 
 This policy covers security issues in:
 
-| Component | Examples |
-|-----------|---------|
-| `scripts/` | Contract deploy/rollback, backup, seed, smoke-test scripts |
-| `k8s/` | Kubernetes manifests and Kustomize overlays |
-| `backend/Dockerfile`, `frontend/Dockerfile` | Image builds |
-| `.github/workflows/` | CI, deploy, backup workflows |
-| `monitoring/` | Prometheus, Alertmanager, Grafana configuration |
-| `docs/` | Runbooks that contain security-relevant instructions |
+| Component                                   | Examples                                                   |
+| ------------------------------------------- | ---------------------------------------------------------- |
+| `scripts/`                                  | Contract deploy/rollback, backup, seed, smoke-test scripts |
+| `k8s/`                                      | Kubernetes manifests and Kustomize overlays                |
+| `backend/Dockerfile`, `frontend/Dockerfile` | Image builds                                               |
+| `.github/workflows/`                        | CI, deploy, backup workflows                               |
+| `monitoring/`                               | Prometheus, Alertmanager, Grafana configuration            |
+| `docs/`                                     | Runbooks that contain security-relevant instructions       |
 
 Issues in the application code itself (`SynapsVault/backend`,
 `SynapsVault/frontend`, `SynapsVault/contracts`) should be reported to those
@@ -67,10 +67,10 @@ Redact any real secrets, keys, or connection strings before sending.
 
 ## Response SLA
 
-| Milestone | Target |
-|-----------|--------|
-| Initial acknowledgment | Within **48 hours** |
-| Triage and severity assessment | Within **5 business days** |
+| Milestone                              | Target                                                       |
+| -------------------------------------- | ------------------------------------------------------------ |
+| Initial acknowledgment                 | Within **48 hours**                                          |
+| Triage and severity assessment         | Within **5 business days**                                   |
 | Remediation and coordinated disclosure | Within **14–30 days** (depending on severity and complexity) |
 
 We follow [coordinated vulnerability disclosure](https://cheatsheetseries.owasp.org/cheatsheets/Vulnerability_Disclosure_Cheat_Sheet.html).

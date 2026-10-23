@@ -19,3 +19,7 @@ target/
 *.swp
 .idea/
 .vscode/
+
+# Python helper bytecode
+__pycache__/
+*.pyc

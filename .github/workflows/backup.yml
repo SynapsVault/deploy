@@ -3,7 +3,14 @@ name: Backup
 on:
   schedule:
     - cron: '0 2 * * *'
+    - cron: '0 4 * * 0'
   workflow_dispatch:
+    inputs:
+      job:
+        description: Operation
+        type: choice
+        default: both
+        options: [backup, verify, both]
 
 permissions:
   contents: read
@@ -20,13 +27,28 @@ env:
 
 jobs:
   backup:
+    if: github.event_name == 'workflow_dispatch' && inputs.job != 'verify' || github.event.schedule == '0 2 * * *'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable # stable
+      - name: Install backup clients
+        run: |
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y "postgresql-client-${PG_CLIENT_VERSION}" awscli gnupg
+          echo "/usr/lib/postgresql/${PG_CLIENT_VERSION}/bin" >> "$GITHUB_PATH"
+      - name: Validate configuration
+        id: config
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          BACKUP_STORAGE_BUCKET: ${{ secrets.BACKUP_STORAGE_BUCKET }}
+        run: |
+          test -n "$DATABASE_URL"
+          test -n "$BACKUP_ENCRYPTION_KEY"
+          test -n "$BACKUP_STORAGE_BUCKET"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
       - name: Run backup script
         if: steps.config.outputs.ready == 'true'
         env:
@@ -38,6 +60,7 @@ jobs:
           BACKUP_STORAGE_ACCESS_KEY_ID: ${{ secrets.BACKUP_STORAGE_ACCESS_KEY_ID }}
           BACKUP_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_STORAGE_SECRET_ACCESS_KEY }}
           BACKUP_STORAGE_ENDPOINT: ${{ secrets.BACKUP_STORAGE_ENDPOINT }}
+          BACKUP_SKIP_CONTRACTS: 1
           SOROBAN_RPC_URL: ${{ vars.SOROBAN_RPC_URL }}
           SOROBAN_NETWORK_PASSPHRASE: ${{ vars.SOROBAN_NETWORK_PASSPHRASE }}
           SOROBAN_CONTRACT_IDS: ${{ vars.SOROBAN_CONTRACT_IDS }}
@@ -76,14 +99,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2 # v2
-
-      - name: Setup kubectl
-        uses: azure/setup-kubectl@v4 # v4
-
-      - name: Run backup
-        run: ./scripts/backup.sh
+      - name: Install restore clients
+        run: |
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y "postgresql-client-${PG_CLIENT_VERSION}" awscli gnupg
+          echo "/usr/lib/postgresql/${PG_CLIENT_VERSION}/bin" >> "$GITHUB_PATH"
+      - name: Validate restore configuration
+        id: config
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          BACKUP_STORAGE_BUCKET: ${{ secrets.BACKUP_STORAGE_BUCKET }}
+        run: |
+          test -n "$DATABASE_URL"
+          test -n "$BACKUP_ENCRYPTION_KEY"
+          test -n "$BACKUP_STORAGE_BUCKET"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
       - name: Run restore verification
         if: steps.config.outputs.ready == 'true'
         env:
@@ -123,7 +154,9 @@ jobs:
           else
             echo "::warning::ALERT_WEBHOOK_URL secret is not set; failure logged to workflow summary only."
           fi
-          echo "### :x: Backup / Restore Verification Failure" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Backup job**: \`${BACKUP_RESULT}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Verify-restore job**: \`${VERIFY_RESULT}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Run URL**: ${RUN_URL}" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### :x: Backup / Restore Verification Failure"
+            echo "- **Backup job**: \`${BACKUP_RESULT}\`"
+            echo "- **Verify-restore job**: \`${VERIFY_RESULT}\`"
+            echo "- **Run URL**: ${RUN_URL}"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -49,7 +49,7 @@ import { resolve } from 'node:path';
  */
 const PLACEHOLDER_PATTERNS = [
   /^REPLACE_ME/i,
-  /^change-me/i,
+  /^change[-_]me/i,
   /^your-/i,
   // Stellar secret key placeholder: S followed by 55 uppercase Xs (or just many Xs)
   /^S[X]{10,}/,
@@ -61,7 +61,7 @@ const PLACEHOLDER_PATTERNS = [
   /^\[FILL/i,
   /^←\s*FILL/i,
   /^\[from /i,
-  /^eyJ\.{3}/,            // truncated JWT placeholder "eyJ..."
+  /^eyJ\.{3}/, // truncated JWT placeholder "eyJ..."
 ];
 
 /**
@@ -88,48 +88,75 @@ function isPlaceholder(value) {
 
 /** @type {VarSpec[]} */
 const COMPOSE_VARS = [
-  { name: 'POSTGRES_USER',       description: 'PostgreSQL username for the compose stack' },
-  { name: 'POSTGRES_PASSWORD',   description: 'PostgreSQL password for the compose stack' },
-  { name: 'POSTGRES_DB',         description: 'PostgreSQL database name' },
-  { name: 'STELLAR_NETWORK',     description: 'Stellar network (testnet/mainnet)' },
-  { name: 'SOROBAN_RPC_URL',     description: 'Soroban RPC endpoint URL' },
-  { name: 'STELLAR_SECRET_KEY',  description: 'Stellar secret key for signing transactions', secret: true },
-  { name: 'STELLAR_PUBLIC_KEY',  description: 'Stellar public key matching STELLAR_SECRET_KEY' },
-  { name: 'SUPABASE_URL',        description: 'Supabase project URL' },
-  { name: 'SUPABASE_ANON_KEY',   description: 'Supabase anonymous/public key', secret: true },
-  { name: 'SUPABASE_SERVICE_KEY', description: 'Supabase service role key (backend only)', secret: true },
-  { name: 'ADMIN_API_KEY',       description: 'Admin API key for protected endpoints', secret: true },
-  { name: 'OPENROUTER_API_KEY',  description: 'OpenRouter API key for LLM access', secret: true },
-  { name: 'AGENT_SECRET_KEY',    description: 'Stellar secret key for the agent signer', secret: true },
-  { name: 'REGISTRY_SECRET_KEY', description: 'Stellar secret key for the registry signer', secret: true },
+  { name: 'POSTGRES_USER', description: 'PostgreSQL username for the compose stack' },
+  {
+    name: 'POSTGRES_PASSWORD',
+    description: 'PostgreSQL password for the compose stack',
+    secret: true,
+  },
+  { name: 'POSTGRES_DB', description: 'PostgreSQL database name' },
+  { name: 'STELLAR_NETWORK', description: 'Stellar network (testnet/mainnet)' },
+  { name: 'SOROBAN_RPC_URL', description: 'Soroban RPC endpoint URL' },
+  {
+    name: 'STELLAR_SECRET_KEY',
+    description: 'Stellar secret key for signing transactions',
+    secret: true,
+  },
+  { name: 'STELLAR_PUBLIC_KEY', description: 'Stellar public key matching STELLAR_SECRET_KEY' },
+  { name: 'SUPABASE_URL', description: 'Supabase project URL' },
+  { name: 'SUPABASE_ANON_KEY', description: 'Supabase anonymous/public key', secret: true },
+  {
+    name: 'SUPABASE_SERVICE_KEY',
+    description: 'Supabase service role key (backend only)',
+    secret: true,
+  },
+  { name: 'ADMIN_API_KEY', description: 'Admin API key for protected endpoints', secret: true },
+  { name: 'OPENROUTER_API_KEY', description: 'OpenRouter API key for LLM access', secret: true },
+  {
+    name: 'AGENT_SECRET_KEY',
+    description: 'Stellar secret key for the agent signer',
+    secret: true,
+  },
+  {
+    name: 'REGISTRY_SECRET_KEY',
+    description: 'Stellar secret key for the registry signer',
+    secret: true,
+  },
 ];
 
 /** @type {VarSpec[]} */
 const K8S_VARS = [
   ...COMPOSE_VARS,
   { name: 'STELLAR_CONTRACT_VAULT_REGISTRY', description: 'Deployed vault-registry contract ID' },
-  { name: 'STELLAR_CONTRACT_ACCESS_LEASE',   description: 'Deployed access-lease contract ID' },
-  { name: 'STELLAR_CONTRACT_SUBSCRIPTION',   description: 'Deployed subscription contract ID' },
-  { name: 'USDC_CONTRACT_ID',                description: 'USDC token contract ID' },
+  { name: 'STELLAR_CONTRACT_ACCESS_LEASE', description: 'Deployed access-lease contract ID' },
+  { name: 'STELLAR_CONTRACT_SUBSCRIPTION', description: 'Deployed subscription contract ID' },
+  { name: 'USDC_CONTRACT_ID', description: 'USDC token contract ID' },
 ];
 
 /** @type {VarSpec[]} */
 const RAILWAY_VARS = [
-  { name: 'DATABASE_URL',        description: 'Supabase/Railway Postgres connection string', secret: true },
-  { name: 'SUPABASE_URL',        description: 'Supabase project URL' },
+  {
+    name: 'DATABASE_URL',
+    description: 'Supabase/Railway Postgres connection string',
+    secret: true,
+  },
+  { name: 'SUPABASE_URL', description: 'Supabase project URL' },
   { name: 'SUPABASE_SERVICE_KEY', description: 'Supabase service role key', secret: true },
-  { name: 'SUPABASE_STORAGE_BUCKET', description: 'Supabase storage bucket name (should be "resources")' },
-  { name: 'STELLAR_NETWORK',     description: 'Stellar network (testnet/mainnet)' },
-  { name: 'SOROBAN_RPC_URL',     description: 'Soroban RPC endpoint URL' },
-  { name: 'USDC_CONTRACT_ID',    description: 'USDC token contract ID' },
-  { name: 'PAY_TO',              description: 'Backend wallet public key (Stellar G...)' },
-  { name: 'AGENT_SECRET_KEY',    description: 'Backend wallet secret key', secret: true },
+  {
+    name: 'SUPABASE_STORAGE_BUCKET',
+    description: 'Supabase storage bucket name (should be "resources")',
+  },
+  { name: 'STELLAR_NETWORK', description: 'Stellar network (testnet/mainnet)' },
+  { name: 'SOROBAN_RPC_URL', description: 'Soroban RPC endpoint URL' },
+  { name: 'USDC_CONTRACT_ID', description: 'USDC token contract ID' },
+  { name: 'PAY_TO', description: 'Backend wallet public key (Stellar G...)' },
+  { name: 'AGENT_SECRET_KEY', description: 'Backend wallet secret key', secret: true },
   { name: 'REGISTRY_SECRET_KEY', description: 'Registry wallet secret key', secret: true },
   { name: 'STELLAR_CONTRACT_VAULT_REGISTRY', description: 'Deployed vault-registry contract ID' },
-  { name: 'STELLAR_CONTRACT_ACCESS_LEASE',   description: 'Deployed access-lease contract ID' },
-  { name: 'STELLAR_CONTRACT_SUBSCRIPTION',   description: 'Deployed subscription contract ID' },
-  { name: 'OPENROUTER_API_KEY',  description: 'OpenRouter API key', secret: true },
-  { name: 'ADMIN_API_KEY',       description: 'Admin API key for protected endpoints', secret: true },
+  { name: 'STELLAR_CONTRACT_ACCESS_LEASE', description: 'Deployed access-lease contract ID' },
+  { name: 'STELLAR_CONTRACT_SUBSCRIPTION', description: 'Deployed subscription contract ID' },
+  { name: 'OPENROUTER_API_KEY', description: 'OpenRouter API key', secret: true },
+  { name: 'ADMIN_API_KEY', description: 'Admin API key for protected endpoints', secret: true },
 ];
 
 /** @type {Record<string, VarSpec[]>} */
@@ -295,7 +322,9 @@ export function run(argv = process.argv.slice(2), cwd = process.cwd()) {
 
   const validTargets = Object.keys(TARGETS);
   if (!validTargets.includes(target)) {
-    console.error(`check-env: unknown target "${target}". Valid targets: ${validTargets.join(', ')}`);
+    console.error(
+      `check-env: unknown target "${target}". Valid targets: ${validTargets.join(', ')}`
+    );
     return 1;
   }
 
@@ -331,18 +360,20 @@ export function run(argv = process.argv.slice(2), cwd = process.cwd()) {
       const rawValue = process.env[name] ?? fileEnv[name] ?? '';
       // Mask secrets in output so real values are never echoed in CI logs
       const displayValue = spec?.secret
-        ? rawValue.slice(0, 4) + '****'
+        ? '[redacted]'
         : rawValue.length > 50
           ? rawValue.slice(0, 50) + '…'
           : rawValue;
-      console.error(`  • ${name}="${displayValue}"${spec?.description ? `  — ${spec.description}` : ''}`);
+      console.error(
+        `  • ${name}="${displayValue}"${spec?.description ? `  — ${spec.description}` : ''}`
+      );
     }
     console.error('');
   }
 
   console.error(
     `Fix these values in ${envFile} (copy from .env.example and fill in real values),\n` +
-    `then re-run: node scripts/check-env.js --target ${target}\n`
+      `then re-run: node scripts/check-env.js --target ${target}\n`
   );
 
   return 1;

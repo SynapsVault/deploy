@@ -1,20 +1,6 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: frontend-runtime-config
-  labels:
-    app.kubernetes.io/name: frontend
-    app.kubernetes.io/component: runtime-config
-data:
-  # Runtime configuration consumed by the frontend container at start.
-  # The entrypoint renders these into /config.js as window.__APP_CONFIG__,
-  # so a single image can be promoted across environments.
-  VITE_API_BASE_URL: "https://api.example.com"
-  VITE_APP_ENV: "production"
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
   name: backend-config
   labels:
     app.kubernetes.io/name: backend
@@ -38,33 +24,10 @@ data:
   # Comma-separated browser origins allowed by CORS. The placeholder below is
   # replaced at deploy time from vars.DEPLOY_HOST via the kustomize
   # replacements in k8s/kustomization.yaml (see also k8s/ingress.yaml).
-  ALLOWED_ORIGINS: "https://DEPLOY_HOST"
----
-# Base defaults only. Environment-specific values (network, RPC/Horizon URLs,
-# USDC contract, ALLOWED_ORIGINS) are overridden per overlay via
-# kustomize patches in k8s/overlays/{staging,production}.
-#
-# ALLOWED_ORIGINS is parameterised: the DEPLOY_HOST token is substituted with
-# the deploy host (vars.DEPLOY_HOST) by the kustomize replacements wired in
-# k8s/kustomization.yaml, so host, TLS secret and CORS origin all derive from
-# a single value.
-  # Comma-separated browser origins allowed by CORS; set to your public host.
+  DEPLOY_HOST: "app.example.com"
   ALLOWED_ORIGINS: "https://app.example.com"
-  # Connection pooling for the HPA-scaled backend.
-  # Route DATABASE_URL through Supabase's pooler (port 6543) or a PgBouncer
-  # service so replicas share a bounded set of Postgres connections.
-  # Example: postgres://user:pass@db.<project>.supabase.co:6543/postgres
-  # Keep DB_POOL_SIZE small so (maxReplicas * DB_POOL_SIZE) stays within the
-  # Postgres/Supabase connection limit. With 10 replicas and a 60-connection
-  # budget, 5 per replica leaves headroom for migrations and admin sessions.
+  STELLAR_CONTRACT_VAULT_REGISTRY: "REPLACE_ME_VAULT_REGISTRY"
+  STELLAR_CONTRACT_ACCESS_LEASE: "REPLACE_ME_ACCESS_LEASE"
+  STELLAR_CONTRACT_SUBSCRIPTION: "REPLACE_ME_SUBSCRIPTION"
   DB_POOL_SIZE: "5"
   DB_POOL_TIMEOUT_MS: "10000"
-  # Contract IDs deployed to the network above. These are managed in Git so
-  # `kubectl apply` and the running config stay in sync. Replace the
-  # placeholders with the IDs emitted by the contract deploy, then re-apply:
-  #   kubectl apply -f k8s/configmap.yaml
-  #   kubectl rollout restart deployment/backend
-  # (or use `scripts/rollback-contracts.cjs --configmap` to patch them).
-  ESCROW_CONTRACT_ID: ""
-  PAYMENT_CONTRACT_ID: ""
-  REGISTRY_CONTRACT_ID: ""

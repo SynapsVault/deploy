@@ -32,14 +32,14 @@ This repo holds deployment tooling only; the application code lives in
 [SynapsVault/frontend](https://github.com/SynapsVault/frontend) and
 [SynapsVault/contracts](https://github.com/SynapsVault/contracts).
 
-| Path | Contents |
-|------|----------|
+| Path                                        | Contents                                                                                                                                                                                                                                                                                                                                         |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `backend/Dockerfile`, `frontend/Dockerfile` | Image builds (the build context is a checkout of the app repo). Note: both images currently build with `--legacy-peer-deps` because of upstream peer dependency conflicts (`x402-stellar` vs `@stellar/stellar-sdk`) and a missing `package-lock.json` in `SynapsVault/frontend`; override with `--build-arg NPM_FLAGS=` once resolved upstream. |
-| `k8s/` | Kustomize manifests for production |
-| `scripts/` | Contract deploy/rollback, catalog seeding, smoke test, DB backup/restore/rollback |
-| `monitoring/` | Prometheus, Alertmanager and Grafana config |
-| `.github/workflows/` | CI, image build + K8s deploy, contract deploy, scheduled backups |
-| `test/` | Unit tests for the contract scripts (`npm test`) |
+| `k8s/`                                      | Kustomize manifests for production                                                                                                                                                                                                                                                                                                               |
+| `scripts/`                                  | Contract deploy/rollback, catalog seeding, smoke test, DB backup/restore/rollback                                                                                                                                                                                                                                                                |
+| `monitoring/`                               | Prometheus, Alertmanager and Grafana config                                                                                                                                                                                                                                                                                                      |
+| `.github/workflows/`                        | CI, image build + K8s deploy, contract deploy, scheduled backups                                                                                                                                                                                                                                                                                 |
+| `test/`                                     | Unit tests for the contract scripts (`npm test`)                                                                                                                                                                                                                                                                                                 |
 
 ---
 
@@ -162,13 +162,13 @@ docker compose up --build
 
 Service URLs (ports are configurable in `.env`):
 
-| Service    | URL                     |
-|------------|-------------------------|
-| Frontend   | http://localhost:8080   |
-| Backend    | http://localhost:3000   |
-| Postgres   | localhost:5432          |
-| Prometheus | http://localhost:9090   |
-| Grafana    | http://localhost:3001   |
+| Service    | URL                   |
+| ---------- | --------------------- |
+| Frontend   | http://localhost:8080 |
+| Backend    | http://localhost:3000 |
+| Postgres   | localhost:5432        |
+| Prometheus | http://localhost:9090 |
+| Grafana    | http://localhost:3001 |
 
 Database migrations run automatically: the one-shot `migrate` service applies
 them before `backend` starts. To re-run them manually:
@@ -212,15 +212,15 @@ previous contract IDs with
 
 The **CI** workflow runs on every pull request and push to `main`:
 
-| Job | Checks |
-|-----|--------|
-| Lint GitHub workflows | `actionlint` (including shellcheck of `run:` blocks) |
-| Lint shell scripts | `shellcheck` + `bash -n` on `scripts/*.sh` |
-| Node scripts and tests | syntax check, `npm test`, CLI smoke tests |
-| Validate Kubernetes manifests | `kubectl kustomize` + `kubeconform -strict` |
-| Validate monitoring config | `promtool`, `amtool`, dashboard JSON |
-| Validate docker-compose | `docker compose config` with `.env.example` |
-| Build images | backend, backend-migrate and frontend images from the app repos |
+| Job                           | Checks                                                          |
+| ----------------------------- | --------------------------------------------------------------- |
+| Lint GitHub workflows         | `actionlint` (including shellcheck of `run:` blocks)            |
+| Lint shell scripts            | `shellcheck` + `bash -n` on `scripts/*.sh`                      |
+| Node scripts and tests        | syntax check, `npm test`, CLI smoke tests                       |
+| Validate Kubernetes manifests | `kubectl kustomize` + `kubeconform -strict`                     |
+| Validate monitoring config    | `promtool`, `amtool`, dashboard JSON                            |
+| Validate docker-compose       | `docker compose config` with `.env.example`                     |
+| Build images                  | backend, backend-migrate and frontend images from the app repos |
 
 Run the same checks locally before pushing:
 
@@ -310,6 +310,7 @@ Save the contract IDs from `contract-ids.env` — you need them for the backend.
 Follow the canonical guide: **[docs/railway-deploy.md](./docs/railway-deploy.md)**
 
 Before deploying, verify your `.env` has no unfilled placeholders:
+
 ```bash
 node scripts/check-env.js --target railway
 ```
@@ -320,6 +321,7 @@ environment variables, migrations, verification, and troubleshooting.
 ### Step 6 — Run migrations
 
 In Railway shell:
+
 ```bash
 pnpm drizzle-kit migrate
 ```
@@ -327,9 +329,11 @@ pnpm drizzle-kit migrate
 ### Step 7 — Frontend already on Vercel
 
 Your frontend is already connected to GitHub. Just update the env vars:
+
 ```
 VITE_API_URL = https://[your-railway-app].up.railway.app
 ```
+
 Then trigger a redeploy in Vercel.
 
 ### Step 8 — Seed the catalog
@@ -356,6 +360,7 @@ All 6 checks should pass. Fix any failures before submitting.
 ### Step 10 — Record demo video
 
 SCF requires a 3–5 minute demo video. Record:
+
 1. Show the live URL (https://synapsvault.vercel.app)
 2. Connect Freighter wallet
 3. Browse the catalog — show 3 real resources
@@ -372,6 +377,7 @@ Upload to YouTube (unlisted) and paste the URL in the SCF submission form.
 ## After deployment — update the SCF submission
 
 In `docs/SCF-submission.md`, replace these placeholders:
+
 - `C[CONTRACT_ID]` with your actual contract IDs from `contract-ids.env`
 - `https://synapsvault-backend.up.railway.app` with your actual Railway URL
 - `https://synapsvault.vercel.app` with your actual Vercel URL

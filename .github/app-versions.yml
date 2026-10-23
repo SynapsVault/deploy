@@ -3,8 +3,8 @@
 # by unrelated upstream changes on the app repos' moving `main` branch.
 # Bump these deliberately when you want to pick up new upstream commits.
 backend:
-  repo: your-org/backend
+  repo: SynapsVault/backend
   ref: main
 frontend:
-  repo: your-org/frontend
+  repo: SynapsVault/frontend
   ref: main

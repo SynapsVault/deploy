@@ -8,7 +8,7 @@
     "check:env:compose": "node scripts/check-env.js --target compose",
     "check:env:k8s": "node scripts/check-env.js --target k8s",
     "check:env:railway": "node scripts/check-env.js --target railway",
-    "check:links": "markdown-link-check -q -p README.md && markdown-link-check -q -r docs",
+    "check:links": "markdown-link-check -q README.md docs/*.md",
     "step1": "node scripts/01-generate-keypairs.js",
     "step2": "node scripts/02-fund-accounts.js",
     "step3": "bash scripts/03-deploy-contracts.sh",
@@ -17,13 +17,21 @@
     "step6": "node scripts/06-smoke-test.js",
     "deploy:contracts": "node scripts/deploy-contracts.cjs",
     "rollback:contracts": "node scripts/rollback-contracts.cjs",
-    "lint": "npx --yes eslint scripts/ test/",
-    "format": "npx --yes prettier --write \"scripts/**/*.{js,cjs}\" \"test/**/*.{cjs,mjs}\" \"*.{json,md}\"",
-    "format:check": "npx --yes prettier --check \"scripts/**/*.{js,cjs}\" \"test/**/*.{cjs,mjs}\" \"*.{json,md}\"",
+    "lint": "eslint scripts/ test/",
+    "format": "prettier --write \"scripts/**/*.{js,cjs}\" \"test/**/*.{cjs,mjs}\" \"*.{json,md}\"",
+    "format:check": "prettier --check \"scripts/**/*.{js,cjs}\" \"test/**/*.{cjs,mjs}\" \"*.{json,md}\"",
     "test": "node --test \"test/**/*.test.cjs\"",
     "test:smoke": "node scripts/06-smoke-test.js"
   },
   "devDependencies": {
-    "markdown-link-check": "^3.12.0"
+    "eslint": "10.13.0",
+    "markdown-link-check": "3.11.2",
+    "prettier": "^3.9.10"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "^17.2.1"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

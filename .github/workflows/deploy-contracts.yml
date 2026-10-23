@@ -25,12 +25,23 @@ jobs:
   deploy:
     name: Deploy contracts
     runs-on: ubuntu-latest
+    environment: contracts-${{ inputs.network }}
     outputs:
       contract_ids: ${{ steps.ids.outputs.contract_ids }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Checkout contracts
+        uses: actions/checkout@v4
+        with:
+          repository: SynapsVault/contracts
+          path: src/contracts
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -47,23 +58,28 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build contracts
-        run: cargo build --release --target wasm32-unknown-unknown
+        working-directory: src/contracts
+        run: cargo build --release --target wasm32-unknown-unknown --workspace
 
       - name: Deploy contracts
         id: deploy
         env:
           STELLAR_SECRET_KEY: ${{ secrets.STELLAR_SECRET_KEY }}
           NETWORK: ${{ inputs.network }}
-        run: ./scripts/deploy-contracts.sh
+          SOROBAN_RPC_URL: ${{ vars.SOROBAN_RPC_URL }}
+          ADMIN_PUBLIC_KEY: ${{ vars.ADMIN_PUBLIC_KEY }}
+        run: node scripts/deploy-contracts.cjs --wasm-dir src/contracts/target/wasm32-unknown-unknown/release --yes
 
       - name: Collect contract IDs
         id: ids
         run: |
-          if [ -f contract-ids.json ]; then
-            echo "contract_ids=$(jq -c . contract-ids.json)" >> "$GITHUB_OUTPUT"
-          else
-            echo "contract_ids={}" >> "$GITHUB_OUTPUT"
-          fi
+          node - <<'JS'
+          const fs = require('fs');
+          const ids = Object.fromEntries(fs.readFileSync('contract-ids.env', 'utf8').split('\n')
+            .filter(line => line.startsWith('STELLAR_CONTRACT_')).map(line => line.split('=')));
+          fs.writeFileSync('contract-ids.json', JSON.stringify(ids));
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `contract_ids=${JSON.stringify(ids)}\n`);
+          JS
 
       - name: Upload contract IDs artifact
         uses: actions/upload-artifact@v4
@@ -101,7 +117,7 @@ jobs:
 
           for key, value in ids.items():
               # Map contract name -> ConfigMap key, e.g. "vault" -> "VAULT_CONTRACT_ID".
-              cm_key = re.sub(r"[^A-Za-z0-9]+", "_", key).upper() + "_CONTRACT_ID"
+              cm_key = key
               pattern = re.compile(rf"^(\s*{re.escape(cm_key)}:\s*).*$", re.MULTILINE)
               if pattern.search(text):
                   text = pattern.sub(lambda m: m.group(1) + f'"{value}"', text)

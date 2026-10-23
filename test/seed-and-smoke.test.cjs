@@ -10,6 +10,7 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { pathToFileURL } = require('url');
+const { Keypair } = require('@stellar/stellar-sdk');
 
 const ROOT = path.resolve(__dirname, '..');
 const SEED_SCRIPT = path.join(ROOT, 'scripts', '05-seed-catalog.js');
@@ -33,6 +34,9 @@ function runWithStub(scriptPath, scenario, extraEnv = {}) {
         env: {
           ...process.env,
           BACKEND_URL: 'http://stub.local:3000',
+          PUBLISHER1_PUBLIC: Keypair.random().publicKey(),
+          PUBLISHER2_PUBLIC: Keypair.random().publicKey(),
+          ADMIN_API_KEY: 'test-admin-key',
           FRIENDBOT_STUB: JSON.stringify(scenario),
           FRIENDBOT_STUB_LOG: log,
           ...extraEnv,
@@ -60,6 +64,7 @@ function runWithStub(scriptPath, scenario, extraEnv = {}) {
 
 test('05-seed-catalog.js creates publishers, publishes 3 resources, and verifies catalog', () => {
   const { status, stdout, requested } = runWithStub(SEED_SCRIPT, [
+    { status: 200, json: { resources: [] } },
     { status: 200, json: { apiKey: 'pub1_api_key_123456' } },
     { status: 200, json: { apiKey: 'pub2_api_key_654321' } },
     { status: 200, json: { id: 'res-1', accessUrl: 'http://stub.local:3000/resources/res-1' } },
@@ -71,35 +76,41 @@ test('05-seed-catalog.js creates publishers, publishes 3 resources, and verifies
   assert.equal(status, 0);
   assert.match(stdout, /Catalog seeded ✅/);
   assert.match(stdout, /res-1/);
-  assert.equal(requested.length, 6);
+  assert.equal(requested.length, 7);
 });
 
 test('06-smoke-test.js exits 0 when all 6 checks pass', () => {
   const { status, stdout, requested } = runWithStub(SMOKE_SCRIPT, [
     { status: 200, json: { status: 'healthy' } },
+    { status: 200, json: { status: 'healthy' } },
     { status: 200, json: { resourceCount: 3 } },
     { status: 200, json: { resources: [{ id: 'res-1' }, { id: 'res-2' }] } },
     { status: 402, json: { error: 'Payment Required' } },
+    { status: 401, json: {} },
+    { status: 403, json: {} },
     { status: 200, json: { resources: 2, publishers: 2 } },
     { status: 200, text: '<html>Swagger</html>' },
   ]);
 
   assert.equal(status, 0);
   assert.match(stdout, /6 passed  \/  0 failed/);
-  assert.equal(requested.length, 6);
+  assert.equal(requested.length, 9);
 });
 
 test('06-smoke-test.js exits 1 when paywall does not return 402', () => {
   const { status, stdout, stderr } = runWithStub(SMOKE_SCRIPT, [
     { status: 200, json: { status: 'healthy' } },
+    { status: 200, json: { status: 'healthy' } },
     { status: 200, json: { resourceCount: 3 } },
     { status: 200, json: { resources: [{ id: 'res-1' }] } },
     { status: 200, json: { leaked: true } },
+    { status: 401, json: {} },
+    { status: 403, json: {} },
     { status: 200, json: { resources: 1, publishers: 1 } },
     { status: 200, text: '<html>Swagger</html>' },
   ]);
 
   assert.equal(status, 1);
-  assert.match(stderr, /Expected 402, got 200/);
+  assert.match(stderr, /Expected 402 for resource res-1, got 200/);
   assert.match(stdout, /5 passed  \/  1 failed/);
 });
