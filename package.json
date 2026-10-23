@@ -8,7 +8,7 @@
     "check:env:compose": "node scripts/check-env.js --target compose",
     "check:env:k8s": "node scripts/check-env.js --target k8s",
     "check:env:railway": "node scripts/check-env.js --target railway",
-    "check:links": "markdown-link-check -q README.md docs/*.md",
+    "check:links": "markdown-link-check -q -c .markdown-link-check.json README.md docs/*.md",
     "step1": "node scripts/01-generate-keypairs.js",
     "step2": "node scripts/02-fund-accounts.js",
     "step3": "bash scripts/03-deploy-contracts.sh",

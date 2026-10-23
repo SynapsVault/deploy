@@ -47,7 +47,7 @@ The monitoring stack consists of:
 | Alert rules | Defines alerting conditions | [`monitoring/alert-rules.yml`](../monitoring/alert-rules.yml) |
 | Alertmanager | Routes alerts to notification channels | [`monitoring/alertmanager.yml`](../monitoring/alertmanager.yml) |
 | Grafana | Visualizes metrics via dashboards | [`monitoring/grafana/`](../monitoring/grafana) |
-| Docker Compose | Local/all-in-one deployment | [`monitoring/docker-compose.yml`](../monitoring/docker-compose.yml) |
+| Docker Compose | Local/all-in-one deployment | [`docker-compose.yml`](../docker-compose.yml) |
 
 > Adjust the paths above if your repository layout differs. The steps below assume the `monitoring/` directory at the repository root.
 
@@ -102,7 +102,7 @@ Prometheus scrapes metrics over HTTP. The backend must expose a metrics endpoint
 
 ### Option A: Docker Compose
 
-The repository ships a Compose file at [`monitoring/docker-compose.yml`](../monitoring/docker-compose.yml) that starts Prometheus, Alertmanager, and Grafana together.
+The repository ships a Compose file at [`docker-compose.yml`](../docker-compose.yml) that starts Prometheus, Alertmanager, and Grafana together through the `monitoring` profile.
 
 > **Compose profiles:** The monitoring services in the root [`docker-compose.yml`](../docker-compose.yml) are assigned to the `monitoring` profile. They are **not** started by a plain `docker compose up`. To include them, pass the profile explicitly:
 >

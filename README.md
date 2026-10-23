@@ -361,7 +361,7 @@ All 6 checks should pass. Fix any failures before submitting.
 
 SCF requires a 3–5 minute demo video. Record:
 
-1. Show the live URL (https://synapsvault.vercel.app)
+1. Show the live URL configured for your deployment
 2. Connect Freighter wallet
 3. Browse the catalog — show 3 real resources
 4. Click "Buy" on one resource — approve the USDC payment
@@ -380,7 +380,7 @@ In `docs/SCF-submission.md`, replace these placeholders:
 
 - `C[CONTRACT_ID]` with your actual contract IDs from `contract-ids.env`
 - `https://synapsvault-backend.up.railway.app` with your actual Railway URL
-- `https://synapsvault.vercel.app` with your actual Vercel URL
+- the placeholder frontend URL with your actual deployed frontend URL
 - Add the demo video URL in Section 12
 
 Then submit the interest form at: https://communityfund.stellar.org/awards

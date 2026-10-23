@@ -1,0 +1,8 @@
+{
+  "ignorePatterns": [
+    { "pattern": "^https?://localhost" },
+    { "pattern": "^https://synapsvault\\.vercel\\.app$" },
+    { "pattern": "^https://stellar\\.expert/explorer/testnet/account/G%5BDEPLOYER%5D$" },
+    { "pattern": "^https://stellar\\.expert/explorer/testnet/contract/" }
+  ]
+}
