@@ -131,7 +131,7 @@ services:
       - app_network
 
   prometheus:
-    image: prom/prometheus:v3.15.0
+    image: prom/prometheus:v3.15.1
     container_name: app_prometheus
     restart: unless-stopped
     environment:
@@ -164,7 +164,7 @@ services:
       - app_network
 
   alertmanager:
-    image: prom/alertmanager:v0.34.1
+    image: prom/alertmanager:v0.34.2
     container_name: app_alertmanager
     restart: unless-stopped
     profiles:
@@ -188,7 +188,7 @@ services:
       - app_network
 
   grafana:
-    image: grafana/grafana:13.2.4
+    image: grafana/grafana:13.3.0
     container_name: app_grafana
     restart: unless-stopped
     profiles:
