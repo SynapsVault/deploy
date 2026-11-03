@@ -24,12 +24,12 @@
     "test:smoke": "node scripts/06-smoke-test.js"
   },
   "devDependencies": {
-    "eslint": "10.13.0",
-    "markdown-link-check": "3.11.2",
+    "eslint": "10.14.0",
+    "markdown-link-check": "3.15.0",
     "prettier": "^3.9.10"
   },
   "dependencies": {
-    "@stellar/stellar-sdk": "^17.2.1"
+    "@stellar/stellar-sdk": "^17.4.0"
   },
   "engines": {
     "node": ">=22.12.0"
