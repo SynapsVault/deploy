@@ -243,6 +243,7 @@ cleanup() {
     emit_metrics "${overall_success}" "$(( end_ts - START_TS ))" \
       "${UPLOADED_SIZE_BYTES}" "$(previous_last_success)" "${err_msg}" || true
     local reason_msg="backup failed with exit code ${exit_code}"
+    fi
     if [[ -n "${FAILURE_REASON}" ]]; then
       reason_msg="${reason_msg} (reason=${FAILURE_REASON})"
     fi
