@@ -411,8 +411,8 @@ jobs:
             -- nslookup kubernetes.default.svc.cluster.local
 
       # #160: publish a human-readable deployment summary to the Actions job
-      # summary so reviewers can see environment, sources, digests and links
-      # without opening logs, and without exposing credentials.
+      # summary so reviewers can see environment, sources, digests and a run
+      # link without opening logs, and without exposing credentials.
       - name: Publish deployment summary
         if: success()
         env:
@@ -430,9 +430,7 @@ jobs:
           BACKEND_IMAGE=${BACKEND_IMAGE:-unknown}
           FRONTEND_IMAGE=$(jq -r '.images.frontend' release-manifest.json 2>/dev/null
           FRONTEND_IMAGE=${FRONTEND_IMAGE:-unknown}
-          cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
-          ## Deployment summary
-          SUMMARY
+          printf '## Deployment summary\n\n' >> "$GITHUB_STEP_SUMMARY"
           printf '| Field | Value |\n|---|---|\n' >> "$GITHUB_STEP_SUMMARY"
           printf '| **Environment** | %s |\n' "${DEPLOY_ENV}" >> "$GITHUB_STEP_SUMMARY"
           printf '| **Workflow run** | [link](%s) |\n' "${RUN_URL}" >> "$GITHUB_STEP_SUMMARY"
