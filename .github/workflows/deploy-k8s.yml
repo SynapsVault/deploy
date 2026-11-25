@@ -618,9 +618,9 @@ jobs:
           TARGET_URL: https://${{ steps.target.outputs.namespace }}.example.com
         run: |
           set -euo pipefail
-          BACKEND_IMAGE=$(jq -r '.images.backend' release-manifest.json 2>/dev/null
+          BACKEND_IMAGE=$(jq -r '.images.backend' release-manifest.json 2>/dev/null || true)
           BACKEND_IMAGE=${BACKEND_IMAGE:-unknown}
-          FRONTEND_IMAGE=$(jq -r '.images.frontend' release-manifest.json 2>/dev/null
+          FRONTEND_IMAGE=$(jq -r '.images.frontend' release-manifest.json 2>/dev/null || true)
           FRONTEND_IMAGE=${FRONTEND_IMAGE:-unknown}
           printf '## Deployment summary\n\n' >> "$GITHUB_STEP_SUMMARY"
           printf '| Field | Value |\n|---|---|\n' >> "$GITHUB_STEP_SUMMARY"
