@@ -7,7 +7,7 @@
 #   runtime (default)  API server: node dist/index.js on $PORT (3000)
 #   migrate            One-shot Drizzle migrations (used as a k8s initContainer)
 
-ARG NODE_VERSION=22
+ARG NODE_VERSION=24
 # Override when upstream peer dependency conflicts are resolved.
 ARG NPM_FLAGS=--legacy-peer-deps
 
@@ -23,7 +23,7 @@ ARG NPM_FLAGS
 WORKDIR /app
 
 # Build tooling for any native modules
-RUN apk add --no-cache python3=3.14.10-r1 make=4.4.1-r4 g++=15.2.0-r5
+RUN apk add --no-cache python3 make g++
 
 COPY package.json package-lock.json* ./
 # Skip lifecycle scripts: the postinstall symlinks packages/registry-client,
@@ -36,7 +36,7 @@ FROM node:${NODE_VERSION}-alpine AS prod-deps
 ARG NPM_FLAGS
 WORKDIR /app
 
-RUN apk add --no-cache python3=3.14.10-r1 make=4.4.1-r4 g++=15.2.0-r5
+RUN apk add --no-cache python3 make g++
 
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev --ignore-scripts ${NPM_FLAGS}
