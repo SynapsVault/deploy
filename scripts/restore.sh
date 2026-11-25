@@ -679,7 +679,9 @@ esac
 # duplicate normalized member names, and archives exceeding the configured
 # member-count / uncompressed-size budgets.
 python3 "$(dirname "${BASH_SOURCE[0]}")/validate-archive.py" "$ARCHIVE_PATH" \
-  || die 3 "archive contains unsafe paths or file types"
+  --max-members "${RESTORE_MAX_MEMBERS:-10000}" \
+  --max-uncompressed-bytes "${RESTORE_MAX_UNCOMPRESSED_BYTES:-10737418240}" \
+  || die 3 "archive rejected: unsafe paths or file types, duplicate member paths, or exceeds size/member budget"
 
 # Check the archive's top-level components against the restore allowlist before
 # extracting or touching any database. Unknown required components, unexpected
@@ -688,9 +690,6 @@ log "validating archive contents against the restore component allowlist"
 python3 "$(dirname "${BASH_SOURCE[0]}")/validate-archive.py" --allowlist "$ARCHIVE_PATH" \
   || die 3 "archive contents failed allowlist validation (unexpected or missing components)"
 
-  --max-members "${RESTORE_MAX_MEMBERS:-10000}" \
-  --max-uncompressed-bytes "${RESTORE_MAX_UNCOMPRESSED_BYTES:-10737418240}" \
-  || die 3 "archive rejected: unsafe paths or file types, duplicate member paths, or exceeds size/member budget"
 EXTRACT_DIR="$(mktemp -d "$WORK_DIR/extracted.XXXXXXXX")"
 tar -xzf "$ARCHIVE_PATH" -C "$EXTRACT_DIR" || die 3 "archive is not a valid tar.gz"
 
