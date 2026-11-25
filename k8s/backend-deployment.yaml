@@ -25,6 +25,30 @@ spec:
       # from a private registry. Omit for public registries.
       imagePullSecrets:
         - name: registry-pull-secret
+      # #164: spread backend replicas across zones and nodes so one zone or
+      # node failure cannot take out every replica. Both constraints use
+      # ScheduleAnyway, so a single-zone (or single-node) cluster still
+      # schedules every replica: the scheduler only prefers the spread layout
+      # and never leaves a pod Pending because a second zone is missing.
+      # matchLabelKeys scopes the skew to one ReplicaSet, so the surge pod of a
+      # rollout is spread against its own revision rather than the old one.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: backend
+          matchLabelKeys:
+            - pod-template-hash
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: backend
+          matchLabelKeys:
+            - pod-template-hash
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000

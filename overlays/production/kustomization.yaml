@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: synapsvault-production
 resources:
   - ../../k8s
+  - resourcequota.yaml
 patches:
   - target:
       kind: Namespace

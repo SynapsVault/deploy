@@ -1,0 +1,32 @@
+# Namespace resource budget for production (#166).
+#
+# Sized from the base manifests at peak, i.e. during a rollout while the
+# backend-migrate Job runs (default RollingUpdate maxSurge of 25% rounds up to
+# one extra pod per Deployment):
+#
+#   pods                 backend 1+1, frontend 2+1, migrate 1          = 6
+#   requests.cpu         2x100m + 3x50m + 100m                          = 450m
+#   limits.cpu           2x500m + 3x250m + 500m                         = 2250m
+#   requests.memory      2x128Mi + 3x64Mi + 128Mi                       = 576Mi
+#   limits.memory        2x512Mi + 3x128Mi + 512Mi                      = 1920Mi
+#   requests.ephemeral   2x64Mi + 3x64Mi + 256Mi                        = 576Mi
+#   limits.ephemeral     2x512Mi + 3x256Mi + 1Gi                        = 2816Mi
+#
+# Production gets roughly 2x that peak so replicas can be scaled up
+# (manually or by an HPA) without first raising the quota. See
+# docs/DEPLOY-KUBERNETES.md "Namespace resource quotas" before changing it.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: compute-budget
+  labels:
+    environment: production
+spec:
+  hard:
+    pods: "12"
+    requests.cpu: "1"
+    limits.cpu: "5"
+    requests.memory: 1280Mi
+    limits.memory: 4Gi
+    requests.ephemeral-storage: 1280Mi
+    limits.ephemeral-storage: 6Gi
