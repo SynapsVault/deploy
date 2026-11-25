@@ -55,7 +55,6 @@ BACKUP_SKIP_LOCK="${BACKUP_SKIP_LOCK:-0}"
 BACKUP_REQUIRED_FREE_BYTES="${BACKUP_REQUIRED_FREE_BYTES:-1073741824}"
 # Set to 1 to skip the preflight free-space check.
 BACKUP_SKIP_FREE_SPACE_CHECK="${BACKUP_SKIP_FREE_SPACE_CHECK:-0}"
-=======
 
 # Working directory for staging artifacts.
 WORK_DIR="${BACKUP_WORK_DIR:-$(mktemp -d -t soroban-backup-XXXXXXXX)}"
@@ -133,7 +132,6 @@ BACKUP_STORAGE_MAX_RETRIES="${BACKUP_STORAGE_MAX_RETRIES:-3}"
 BACKUP_RETRY_BACKOFF_SECONDS="${BACKUP_RETRY_BACKOFF_SECONDS:-2}"
 # Upper bound (seconds) on any single backoff sleep.
 BACKUP_RETRY_MAX_BACKOFF_SECONDS="${BACKUP_RETRY_MAX_BACKOFF_SECONDS:-30}"
-=======
 
 # Optional: path to a file containing additional contract IDs (one per line).
 SOROBAN_CONTRACT_IDS_FILE="${SOROBAN_CONTRACT_IDS_FILE:-}"
@@ -180,7 +178,6 @@ RETENTION_ERROR=""
 UPLOADED_OBJECT_KEY=""
 UPLOADED_SIZE_BYTES="0"
 UPLOADED_CHECKSUM=""
-=======
 
 # ---------------------------------------------------------------------------
 # Logging helpers
@@ -243,6 +240,7 @@ cleanup() {
     emit_metrics "${overall_success}" "$(( end_ts - START_TS ))" \
       "${UPLOADED_SIZE_BYTES}" "$(previous_last_success)" "${err_msg}" || true
     local reason_msg="backup failed with exit code ${exit_code}"
+    fi
     if [[ -n "${FAILURE_REASON}" ]]; then
       reason_msg="${reason_msg} (reason=${FAILURE_REASON})"
     fi

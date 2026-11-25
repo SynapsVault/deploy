@@ -53,11 +53,8 @@ function parseArgs(argv) {
 }
 
 const OPTS = parseArgs(process.argv.slice(2));
-const BASE = OPTS.base ?? process.env.BACKEND_URL ?? "http://localhost:3000";
-const ADMIN_KEY = process.env.ADMIN_API_KEY ?? "change_me";
 const EXPECTED_NETWORK = (process.env.EXPECTED_NETWORK ?? "testnet").toLowerCase();
 const EXPECTED_CONTRACT_ID = process.env.EXPECTED_CONTRACT_ID ?? null;
-const EXPECTED_API_BASE = process.env.EXPECTED_API_BASE ?? BASE;
 // ── Configuration validation (runs before any network calls) ────────────────
 
 function configError(message) {
@@ -66,7 +63,7 @@ function configError(message) {
 }
 
 // Base URL — parse and normalize so a trailing slash never produces `//`.
-const RAW_BASE = process.argv[2] ?? process.env.BACKEND_URL ?? "http://localhost:3000";
+const RAW_BASE = OPTS.base ?? process.env.BACKEND_URL ?? "http://localhost:3000";
 let BASE;
 try {
   const parsed = new URL(RAW_BASE);
@@ -81,6 +78,8 @@ try {
 } catch (err) {
   configError(`Invalid BACKEND_URL "${RAW_BASE}": ${err.message}`);
 }
+
+const EXPECTED_API_BASE = process.env.EXPECTED_API_BASE ?? BASE;
 
 // Admin API key — must be explicitly provided and must not be a placeholder.
 const PLACEHOLDER_KEYS = new Set([
@@ -133,6 +132,7 @@ async function fetchWithTimeout(url, options = {}) {
     }
     throw err;
   }
+}
 // Join a normalized base URL with an endpoint path using exactly one slash.
 function url(path) {
   return `${BASE}/${String(path).replace(/^\/+/, "")}`;
@@ -175,14 +175,13 @@ async function check(label, fn) {
 }
 
 async function get(path, headers = {}) {
-  const res = await fetchWithTimeout(`${BASE}${path}`, { headers });
-  const res = await fetch(url(path), { headers });
+  const res = await fetchWithTimeout(url(path), { headers });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
 async function getJson(path, headers = {}) {
-  const res = await fetch(`${BASE}${path}`, { headers });
+  const res = await fetchWithTimeout(`${BASE}${path}`, { headers });
   const text = await res.text();
   let body;
   try {
@@ -198,8 +197,7 @@ async function waitForBackend() {
   let lastErr;
   while (Date.now() < deadline) {
     try {
-      const res = await fetchWithTimeout(`${BASE}/health`);
-      const res = await fetch(url("/health"));
+      const res = await fetchWithTimeout(url("/health"));
       if (res.ok) return;
       lastErr = new Error(`HTTP ${res.status}`);
     } catch (err) {
@@ -308,8 +306,7 @@ await check("x402 paywall blocks unauthenticated access", async () => {
   if (!sampleResourceId) {
     throw new Error("Cannot test paywall: no real resource ID available from catalog");
   }
-  const res = await fetchWithTimeout(`${BASE}/resources/${encodeURIComponent(sampleResourceId)}`, {
-  const res = await fetch(url(`/resources/${encodeURIComponent(sampleResourceId)}`), {
+  const res = await fetchWithTimeout(url(`/resources/${encodeURIComponent(sampleResourceId)}`), {
     redirect: "manual",
   });
   if (res.status !== 402)
@@ -319,25 +316,20 @@ await check("x402 paywall blocks unauthenticated access", async () => {
 
 // Admin stats — verify unauthenticated access is rejected AND authenticated access works
 await check("Admin stats endpoint protected", async () => {
-  const unauthRes = await fetchWithTimeout(`${BASE}/admin/stats`);
-  const unauthRes = await fetch(url("/admin/stats"), { redirect: "manual" });
+  const unauthRes = await fetchWithTimeout(url("/admin/stats"), { redirect: "manual" });
   if (unauthRes.status !== 401 && unauthRes.status !== 403) {
     throw new Error(`Expected 401/403 without X-Admin-Key, got ${unauthRes.status}`);
   }
-
-  const badKeyRes = await fetchWithTimeout(`${BASE}/admin/stats`, {
-  const badKeyRes = await fetch(url("/admin/stats"), {
+  const badKeyRes = await fetchWithTimeout(url("/admin/stats"), {
     headers: { "X-Admin-Key": `${ADMIN_KEY}-invalid` },
     redirect: "manual",
   });
   if (badKeyRes.status !== 401 && badKeyRes.status !== 403) {
     throw new Error(`Expected 401/403 with invalid X-Admin-Key, got ${badKeyRes.status}`);
   }
-
-  const res = await fetchWithTimeout(`${BASE}/admin/stats`, {
   // Authenticated request: never follow redirects automatically. If the server
   // redirects cross-origin, fail without re-sending X-Admin-Key to that origin.
-  const res = await fetch(url("/admin/stats"), {
+  const res = await fetchWithTimeout(url("/admin/stats"), {
     headers: { "X-Admin-Key": ADMIN_KEY },
     redirect: "manual",
   });
@@ -369,10 +361,9 @@ await check("Admin stats endpoint protected", async () => {
 // fetch the JSON spec and assert its content signature.
 const OPENAPI_PATHS = ["/docs/json", "/openapi.json", "/docs-json"];
 await check("OpenAPI docs served", async () => {
-  const res = await fetchWithTimeout(`${BASE}/docs`);
   const attempts = [];
   for (const path of OPENAPI_PATHS) {
-    const res = await fetch(`${BASE}${path}`, {
+    const res = await fetchWithTimeout(`${BASE}${path}`, {
       headers: { Accept: "application/json" },
     });
     const contentType = res.headers.get("content-type") ?? "(none)";
@@ -413,18 +404,14 @@ await check("OpenAPI docs served", async () => {
   }
 
   throw new Error(`No valid OpenAPI document found:\n    ${attempts.join("\n    ")}`);
-  const res = await fetch(url("/docs"));
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return "Swagger UI reachable";
 });
-=======
 
 // Frontend runtime config — optional, verifies the deployed frontend points at
 // the expected network and API base (detects wrong-environment deployments).
 if (OPTS.frontendUrl) {
   await check("Frontend runtime config matches deployment", async () => {
     const configUrl = `${OPTS.frontendUrl.replace(/\/+$/, "")}/config.js`;
-    const res = await fetch(configUrl);
+    const res = await fetchWithTimeout(configUrl);
     if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${configUrl}`);
     const text = await res.text();
 
