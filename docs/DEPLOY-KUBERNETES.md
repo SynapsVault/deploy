@@ -222,16 +222,72 @@ The gate is implemented by `scripts/verify-image-signatures.sh`. Missing variabl
 mutable tag, an unsigned image, or a signature from a different identity/issuer all stop
 the deploy before any manifest is applied.
 
+#### SBOM and provenance gate
+
+Right after the signature gate, `scripts/verify-image-attestations.sh` checks that every
+rendered image carries a readable **SBOM** and a **provenance** attestation tied to its
+digest (#157). For each digest-pinned image it runs `cosign verify-attestation` with the
+same `COSIGN_IDENTITY` / `COSIGN_OIDC_ISSUER`, decodes the in-toto statement and requires
+that the statement's `subject` contains the image's `sha256` digest and that its predicate
+is not empty.
+
+| Variable (optional) | Default | Purpose |
+| --- | --- | --- |
+| `SBOM_PREDICATE_TYPE` | `spdxjson` | `cosign verify-attestation --type` for the SBOM (e.g. `cyclonedx`) |
+| `PROVENANCE_PREDICATE_TYPE` | `slsaprovenance` | `--type` for provenance (e.g. `slsaprovenance1`) |
+
+The app build workflows must attach both attestations to the pushed digest, for example
+`cosign attest --type spdxjson --predicate sbom.spdx.json <image>@sha256:<digest>` and the
+equivalent provenance attestation. A missing attestation, an unreadable statement, or an
+attestation whose subject is a different digest fails the job before `kubectl apply` with
+an error naming the image, the attestation kind and the digests that were attested. Since
+promotion runs the same gate, such an image can never be promoted to production.
+
+`node --test test/verify-image-attestations.test.cjs` covers these cases with fake
+`kubectl`/`yq`/`cosign` binaries.
+
 #### Release manifest
 
 Every deploy uploads a `release-manifest-<environment>-<run id>-<attempt>` artifact containing `release-manifest.json`. The file records:
 
 - the environment and namespace;
 - the full commit SHAs of this repository (`sources.deploy`), and of `SynapsVault/backend` and `SynapsVault/frontend` resolved from the pinned refs in `.github/workflows/app-versions.env` (`sources.backend` and `sources.frontend`, each with the requested `ref`);
-- the image digests the rolled-out `backend` and `frontend` pods run (`images`);
-- the workflow run URL (`workflow_run_url`).
+- the image digests the rolled-out `backend` and `frontend` pods run, and the digest-pinned image applied for the `backend-migrate` Job (`images.backend`, `images.frontend`, `images.backend_migrate`);
+- the workflow run URL (`workflow_run_url`);
+- for a promotion, the staging run it was promoted from (`promoted_from_staging_run`, otherwise `null`).
 
 The deploy fails if any of the three source revisions is not a full commit SHA. The app SHAs are checked before anything is applied, and all three are checked again before the manifest is uploaded. Use the manifest as the evidence link when adding a row to [`RELEASE-COMPATIBILITY.md`](RELEASE-COMPATIBILITY.md).
+
+#### Promoting staging to production
+
+Production can be released from a verified staging deploy instead of from app refs
+(#153). Run the workflow manually with `environment: production` and
+`promote_staging_run_id` set to the run ID of a successful staging deploy:
+
+```sh
+gh workflow run deploy-k8s.yml -R SynapsVault/deploy \
+  -f environment=production -f promote_staging_run_id=<staging-run-id>
+```
+
+The workflow then:
+
+1. checks that the run is a successful `Deploy to Kubernetes` run and downloads its
+   latest `release-manifest-staging-<run id>-<attempt>` artifact (the run must be recent
+   enough that the artifact has not expired);
+2. requires the manifest to be for `staging`, with full backend/frontend commit SHAs and
+   digest-pinned `backend`, `backend_migrate` and `frontend` images;
+3. skips the backend/frontend source checkouts and takes the refs and SHAs from the
+   manifest, so nothing is resolved or rebuilt again;
+4. patches the production overlay so the `backend` and `frontend` Deployments and the
+   `backend-migrate` Job use exactly those digests, and fails if the rendered images
+   differ;
+5. runs the signature and SBOM/provenance gates, applies, waits for the rollouts, and
+   finally compares the production release manifest with the staging one, failing unless
+   the backend, migration and frontend digests are identical.
+
+Promotion is rejected for any environment other than `production`. Staging manifests
+written before `images.backend_migrate` was recorded cannot be promoted; redeploy staging
+and promote that run.
 
 #### Triggering a deploy from the app repos
 
@@ -329,6 +385,85 @@ kubectl scale deployment/<name> --replicas=5 -n synapsvault
 ```
 
 > **Note:** If a HorizontalPodAutoscaler (HPA) manages the deployment, manual scaling will be overridden by the HPA. Adjust the HPA's `minReplicas`/`maxReplicas` instead (see below).
+
+### Namespace resource quotas
+
+Each environment has its own `ResourceQuota` named `compute-budget` (#166), defined in
+the overlay rather than in `k8s/`, so staging and production budgets are independent:
+
+| Resource | Peak use | Staging (`overlays/staging/resourcequota.yaml`) | Production (`overlays/production/resourcequota.yaml`) |
+| --- | --- | --- | --- |
+| `pods` | 6 | 8 | 12 |
+| `requests.cpu` | 450m | 600m | 1 |
+| `limits.cpu` | 2250m | 3 | 5 |
+| `requests.memory` | 576Mi | 768Mi | 1280Mi |
+| `limits.memory` | 1920Mi | 2560Mi | 4Gi |
+| `requests.ephemeral-storage` | 576Mi | 768Mi | 1280Mi |
+| `limits.ephemeral-storage` | 2816Mi | 3Gi | 6Gi |
+
+"Peak use" is the worst case of a normal deploy: the default `RollingUpdate` surge adds
+one extra `backend` and one extra `frontend` pod while the old ones still run (backend
+1+1, frontend 2+1), and the `backend-migrate` Job pod runs at the same time. Staging
+keeps a small margin over that peak; production keeps about twice the peak so it can be
+scaled out without touching the quota first.
+
+Because the quota covers CPU, memory and ephemeral storage, every pod in these namespaces
+must set requests and limits for all three (all manifests in `k8s/` do). A pod or a
+rollout's surge pod that would exceed the quota is rejected: the ReplicaSet or Job
+reports `exceeded quota: compute-budget` in its events and the rollout stalls instead of
+landing on the cluster.
+
+Check usage against the budget:
+
+```sh
+kubectl -n synapsvault-production describe resourcequota compute-budget
+```
+
+To adjust a quota:
+
+1. Recompute the peak whenever you change `replicas`, the HPA `maxReplicas`, a
+   container's requests/limits, a Deployment's `maxSurge`, or add a Job/CronJob:
+   sum each workload's (replicas + surge) × per-pod requests/limits, plus the
+   migration Job.
+2. Edit `spec.hard` in `overlays/<environment>/resourcequota.yaml` (and the arithmetic
+   in its header comment), keeping it at or above that peak.
+3. Deploy the environment as usual; the quota is applied with the rest of the overlay.
+   Raise the quota **before** (or in the same deploy as) a change that increases usage;
+   otherwise the new pods are rejected.
+
+### Backend topology spread
+
+The backend Deployment declares `topologySpreadConstraints` (#164) so replicas spread
+across zones (`topology.kubernetes.io/zone`) and nodes (`kubernetes.io/hostname`) with a
+`maxSkew` of 1. `matchLabelKeys: [pod-template-hash]` applies the skew within one
+ReplicaSet, so a rollout's surge pod is spread against the pods of its own revision.
+
+Both constraints use `whenUnsatisfiable: ScheduleAnyway`. The scheduler prefers the
+most even layout but never leaves a pod `Pending` because of the spread, so:
+
+- **multiple zones**: with 2 replicas, the second replica lands in a different zone from
+  the first whenever a node in another zone has capacity;
+- **only one zone** (or zone labels missing): every node is in the same domain, so the
+  zone constraint is satisfied trivially and pods still spread across nodes; on a
+  single-node cluster all replicas schedule on that node.
+
+Render and inspect the constraints:
+
+```sh
+kubectl kustomize overlays/production \
+  | yq 'select(.kind == "Deployment" and .metadata.name == "backend") | .spec.template.spec.topologySpreadConstraints'
+```
+
+Check where replicas actually landed and which zone each node is in:
+
+```sh
+kubectl -n synapsvault-production get pods -l app=backend -o wide
+kubectl get nodes -L topology.kubernetes.io/zone
+```
+
+To require zone spread instead (pods stay `Pending` rather than share a zone), switch the
+zone constraint to `whenUnsatisfiable: DoNotSchedule` and add `minDomains`. Only do this on
+clusters with at least that many zones and capacity in each.
 
 ## 5. Roll back a deployment
 

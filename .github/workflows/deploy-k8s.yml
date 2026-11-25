@@ -27,6 +27,11 @@ on:
           - both
           - kube-dns
           - nodelocaldns
+      promote_staging_run_id:
+        description: 'Production only (#153): run ID of a successful staging deploy whose release manifest to promote. Deploys its exact image digests instead of resolving app refs.'
+        required: false
+        default: ''
+        type: string
 
 jobs:
   deploy:
@@ -36,8 +41,13 @@ jobs:
     # Environment-scoped secrets/variables: KUBE_CONFIG plus the expected cluster
     # identity (KUBE_EXPECTED_CONTEXT, KUBE_EXPECTED_SERVER) for that environment.
     environment: ${{ github.event.inputs.environment || 'production' }}
+    permissions:
+      contents: read
+      # Read the staging run and its release-manifest artifact when promoting.
+      actions: read
     env:
       DEPLOY_ENV: ${{ github.event.inputs.environment || 'production' }}
+      PROMOTE_STAGING_RUN_ID: ${{ github.event.inputs.promote_staging_run_id || '' }}
       EXPECTED_KUBE_CONTEXT: ${{ vars.KUBE_EXPECTED_CONTEXT }}
       EXPECTED_KUBE_SERVER: ${{ vars.KUBE_EXPECTED_SERVER }}
     steps:
@@ -46,13 +56,94 @@ jobs:
 
       - name: Load pinned app refs
         timeout-minutes: 10
+      # #153: promotion consumes a successful staging release manifest instead
+      # of resolving and checking out application sources again.
+      - name: Load staging release manifest for promotion
+        timeout-minutes: 10
+        id: promotion
+        if: ${{ env.PROMOTE_STAGING_RUN_ID != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          RUN_ID="$PROMOTE_STAGING_RUN_ID"
+          if [ "$DEPLOY_ENV" != "production" ]; then
+            echo "::error::promote_staging_run_id promotes staging to production; select environment 'production' (got '${DEPLOY_ENV}')"
+            exit 1
+          fi
+          if ! [[ "$RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::promote_staging_run_id '${RUN_ID}' is not a workflow run ID"
+            exit 1
+          fi
+
+          RUN=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}")
+          RUN_PATH=$(jq -r '.path' <<< "$RUN")
+          RUN_CONCLUSION=$(jq -r '.conclusion' <<< "$RUN")
+          if [ "${RUN_PATH%%@*}" != ".github/workflows/deploy-k8s.yml" ]; then
+            echo "::error::Run ${RUN_ID} is '${RUN_PATH}', not a Deploy to Kubernetes run"
+            exit 1
+          fi
+          if [ "$RUN_CONCLUSION" != "success" ]; then
+            echo "::error::Staging run ${RUN_ID} concluded '${RUN_CONCLUSION}'; only a successful staging deploy can be promoted"
+            exit 1
+          fi
+
+          # Latest attempt's staging manifest from that run.
+          ARTIFACT=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/artifacts?per_page=100" \
+            | jq -r --arg prefix "release-manifest-staging-${RUN_ID}-" \
+                '[.artifacts[] | select(.expired | not) | select(.name | startswith($prefix))]
+                 | sort_by(.name | ltrimstr($prefix) | tonumber) | last | .name // empty')
+          if [ -z "$ARTIFACT" ]; then
+            echo "::error::Run ${RUN_ID} has no unexpired release-manifest-staging-${RUN_ID}-<attempt> artifact; it was not a staging deploy or the artifact expired"
+            exit 1
+          fi
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$ARTIFACT" --dir _promotion
+          MANIFEST=_promotion/release-manifest.json
+
+          if ! jq -e '.environment == "staging"' "$MANIFEST" > /dev/null; then
+            echo "::error::${ARTIFACT} is for environment '$(jq -r '.environment' "$MANIFEST")', not staging"
+            exit 1
+          fi
+          jq -e '[.sources.backend.sha, .sources.frontend.sha] | all(type == "string" and test("^([0-9a-f]{40}|[0-9a-f]{64})$"))' "$MANIFEST" > /dev/null \
+            || { echo "::error::${ARTIFACT} does not record full backend/frontend commit SHAs"; exit 1; }
+          for key in backend backend_migrate frontend; do
+            ref=$(jq -r --arg k "$key" '.images[$k] // ""' "$MANIFEST")
+            if ! [[ "$ref" =~ @sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::${ARTIFACT} has no digest-pinned images.${key} (got '${ref:-<none>}'); redeploy staging with this workflow and promote that run"
+              exit 1
+            fi
+          done
+
+          echo "Promoting staging run ${RUN_ID} (${ARTIFACT}):"
+          jq '{sources, images}' "$MANIFEST"
+          {
+            echo "manifest=${MANIFEST}"
+            echo "backend_ref=$(jq -r '.sources.backend.ref' "$MANIFEST")"
+            echo "frontend_ref=$(jq -r '.sources.frontend.ref' "$MANIFEST")"
+            echo "backend_sha=$(jq -r '.sources.backend.sha' "$MANIFEST")"
+            echo "frontend_sha=$(jq -r '.sources.frontend.sha' "$MANIFEST")"
+            echo "backend_image=$(jq -r '.images.backend' "$MANIFEST")"
+            echo "backend_migrate_image=$(jq -r '.images.backend_migrate' "$MANIFEST")"
+            echo "frontend_image=$(jq -r '.images.frontend' "$MANIFEST")"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Load and validate app refs
         id: refs
         env:
           DISPATCH_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
           ALLOWED_REPOSITORIES: SynapsVault/backend,SynapsVault/frontend
+          PROMOTED_BACKEND_REF: ${{ steps.promotion.outputs.backend_ref }}
+          PROMOTED_FRONTEND_REF: ${{ steps.promotion.outputs.frontend_ref }}
         run: |
           set -euo pipefail
+          if [ -n "$PROMOTE_STAGING_RUN_ID" ]; then
+            # Refs come from the promoted staging manifest; nothing is re-resolved.
+            {
+              echo "backend=${PROMOTED_BACKEND_REF}"
+              echo "frontend=${PROMOTED_FRONTEND_REF}"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           . ./.github/workflows/app-versions.env
           # #155: repository_dispatch refs are untrusted input. Validate the
           # format and permitted source repositories BEFORE any checkout.
@@ -69,6 +160,7 @@ jobs:
 
       - name: Checkout backend source
         timeout-minutes: 10
+        if: ${{ env.PROMOTE_STAGING_RUN_ID == '' }}
         uses: actions/checkout@v4
         with:
           repository: SynapsVault/backend
@@ -79,6 +171,7 @@ jobs:
 
       - name: Checkout frontend source
         timeout-minutes: 10
+        if: ${{ env.PROMOTE_STAGING_RUN_ID == '' }}
         uses: actions/checkout@v4
         with:
           repository: SynapsVault/frontend
@@ -90,11 +183,19 @@ jobs:
       - name: Resolve source revisions
         timeout-minutes: 10
         id: revisions
+        env:
+          PROMOTED_BACKEND_SHA: ${{ steps.promotion.outputs.backend_sha }}
+          PROMOTED_FRONTEND_SHA: ${{ steps.promotion.outputs.frontend_sha }}
         run: |
           set -euo pipefail
           DEPLOY_SHA="${{ github.sha }}"
-          BACKEND_SHA=$(git -C _release/backend rev-parse HEAD)
-          FRONTEND_SHA=$(git -C _release/frontend rev-parse HEAD)
+          if [ -n "$PROMOTE_STAGING_RUN_ID" ]; then
+            BACKEND_SHA="$PROMOTED_BACKEND_SHA"
+            FRONTEND_SHA="$PROMOTED_FRONTEND_SHA"
+          else
+            BACKEND_SHA=$(git -C _release/backend rev-parse HEAD)
+            FRONTEND_SHA=$(git -C _release/frontend rev-parse HEAD)
+          fi
           # Fail before any cluster change if a revision is not a full commit SHA.
           for pair in "deploy:${DEPLOY_SHA}" "backend:${BACKEND_SHA}" "frontend:${FRONTEND_SHA}"; do
             name="${pair%%:*}"; sha="${pair#*:}"
@@ -181,6 +282,50 @@ jobs:
             echo "kustomize_dir=${KUSTOMIZE_DIR}"
           } >> "$GITHUB_OUTPUT"
 
+      # #153: pin the overlay to the exact staging digests before the
+      # signature/attestation gates and apply, and fail if the rendered
+      # images differ from the staging manifest.
+      - name: Pin promoted staging image digests
+        timeout-minutes: 10
+        if: ${{ env.PROMOTE_STAGING_RUN_ID != '' }}
+        env:
+          KUSTOMIZE_DIR: ${{ steps.target.outputs.kustomize_dir }}
+          BACKEND_IMAGE: ${{ steps.promotion.outputs.backend_image }}
+          BACKEND_MIGRATE_IMAGE: ${{ steps.promotion.outputs.backend_migrate_image }}
+          FRONTEND_IMAGE: ${{ steps.promotion.outputs.frontend_image }}
+        run: |
+          set -euo pipefail
+          yq -i '.patches += [
+            {"target": {"kind": "Deployment", "name": "backend"},
+             "patch": "- op: replace\n  path: /spec/template/spec/containers/0/image\n  value: " + strenv(BACKEND_IMAGE)},
+            {"target": {"kind": "Job", "name": "backend-migrate"},
+             "patch": "- op: replace\n  path: /spec/template/spec/containers/0/image\n  value: " + strenv(BACKEND_MIGRATE_IMAGE)},
+            {"target": {"kind": "Deployment", "name": "frontend"},
+             "patch": "- op: replace\n  path: /spec/template/spec/containers/0/image\n  value: " + strenv(FRONTEND_IMAGE)}
+          ]' "${KUSTOMIZE_DIR}/kustomization.yaml"
+
+          RENDERED=$(kubectl kustomize "$KUSTOMIZE_DIR")
+          rendered_image() {
+            printf '%s\n' "$RENDERED" \
+              | yq -N "select(.kind == \"$1\" and .metadata.name == \"$2\") | .spec.template.spec.containers[] | select(.name == \"$3\") | .image"
+          }
+          status=0
+          for spec in "backend:Deployment:backend:backend:${BACKEND_IMAGE}" \
+                      "backend_migrate:Job:backend-migrate:migrate:${BACKEND_MIGRATE_IMAGE}" \
+                      "frontend:Deployment:frontend:frontend:${FRONTEND_IMAGE}"; do
+            # The image reference itself contains ':', so split off the first four fields only.
+            IFS=: read -r key kind name container _ <<< "$spec"
+            expected="${spec#*:*:*:*:}"
+            actual=$(rendered_image "$kind" "$name" "$container")
+            if [ "${actual##*@}" != "${expected##*@}" ]; then
+              echo "::error::Rendered ${key} image '${actual}' does not match the staging digest '${expected}'"
+              status=1
+            else
+              echo "${key}: ${actual}"
+            fi
+          done
+          exit "$status"
+
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
 
@@ -192,6 +337,19 @@ jobs:
           COSIGN_OIDC_ISSUER: ${{ vars.COSIGN_OIDC_ISSUER }}
           KUSTOMIZE_DIR: ${{ steps.target.outputs.kustomize_dir }}
         run: bash scripts/verify-image-signatures.sh "$KUSTOMIZE_DIR"
+
+      # #157: every image must carry a readable SBOM and provenance attestation
+      # tied to its digest. Missing or mismatched attestations block the deploy
+      # (and therefore promotion) before kubectl apply.
+      - name: Verify SBOM and provenance attestations before apply
+        timeout-minutes: 10
+        env:
+          COSIGN_IDENTITY: ${{ vars.COSIGN_IDENTITY }}
+          COSIGN_OIDC_ISSUER: ${{ vars.COSIGN_OIDC_ISSUER }}
+          SBOM_PREDICATE_TYPE: ${{ vars.SBOM_PREDICATE_TYPE }}
+          PROVENANCE_PREDICATE_TYPE: ${{ vars.PROVENANCE_PREDICATE_TYPE }}
+          KUSTOMIZE_DIR: ${{ steps.target.outputs.kustomize_dir }}
+        run: bash scripts/verify-image-attestations.sh "$KUSTOMIZE_DIR"
 
       - name: Apply manifests
         timeout-minutes: 10
@@ -212,6 +370,7 @@ jobs:
           FRONTEND_SHA: ${{ steps.revisions.outputs.frontend }}
           BACKEND_REF: ${{ steps.refs.outputs.backend }}
           FRONTEND_REF: ${{ steps.refs.outputs.frontend }}
+          KUSTOMIZE_DIR: ${{ steps.target.outputs.kustomize_dir }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
         run: |
           set -euo pipefail
@@ -235,6 +394,14 @@ jobs:
 
           BACKEND_IMAGE=$(image_digest backend backend)
           FRONTEND_IMAGE=$(image_digest frontend frontend)
+          # The migration Job's pods are short-lived, so record the digest-pinned
+          # image applied for it (the signature gate rejects unpinned images).
+          BACKEND_MIGRATE_IMAGE=$(kubectl kustomize "$KUSTOMIZE_DIR" \
+            | yq -N 'select(.kind == "Job" and .metadata.name == "backend-migrate") | .spec.template.spec.containers[] | select(.name == "migrate") | .image')
+          if ! [[ "$BACKEND_MIGRATE_IMAGE" =~ @sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Expected a digest-pinned backend-migrate image, got: ${BACKEND_MIGRATE_IMAGE:-<none>}"
+            exit 1
+          fi
 
           jq -n \
             --arg environment "$DEPLOY_ENV" \
@@ -247,6 +414,8 @@ jobs:
             --arg frontend_sha "$FRONTEND_SHA" \
             --arg backend_image "$BACKEND_IMAGE" \
             --arg frontend_image "$FRONTEND_IMAGE" \
+            --arg backend_migrate_image "$BACKEND_MIGRATE_IMAGE" \
+            --arg promoted_from "$PROMOTE_STAGING_RUN_ID" \
             --arg run_url "$RUN_URL" \
             --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             '{
@@ -254,6 +423,7 @@ jobs:
               namespace: $namespace,
               created_at: $created_at,
               workflow_run_url: $run_url,
+              promoted_from_staging_run: (if $promoted_from == "" then null else $promoted_from end),
               sources: {
                 deploy:   { repository: $deploy_repo,          sha: $deploy_sha },
                 backend:  { repository: "SynapsVault/backend",  ref: $backend_ref,  sha: $backend_sha },
@@ -261,6 +431,7 @@ jobs:
               },
               images: {
                 backend:  $backend_image,
+                backend_migrate: $backend_migrate_image,
                 frontend: $frontend_image
               }
             }' > release-manifest.json
@@ -270,6 +441,27 @@ jobs:
             || { echo "::error::release-manifest.json contains a source revision that is not a full commit SHA"; exit 1; }
 
           cat release-manifest.json
+
+      # #153: a promotion must run exactly the digests staging ran.
+      - name: Verify production matches the promoted staging digests
+        timeout-minutes: 10
+        if: ${{ env.PROMOTE_STAGING_RUN_ID != '' }}
+        env:
+          STAGING_MANIFEST: ${{ steps.promotion.outputs.manifest }}
+        run: |
+          set -euo pipefail
+          status=0
+          for key in backend backend_migrate frontend; do
+            staging=$(jq -r --arg k "$key" '.images[$k]' "$STAGING_MANIFEST")
+            production=$(jq -r --arg k "$key" '.images[$k]' release-manifest.json)
+            if [ "${staging##*@}" != "${production##*@}" ]; then
+              echo "::error::${key} digest differs: staging ${staging}, production ${production}"
+              status=1
+            else
+              echo "${key}: ${production##*@} (identical in staging and production)"
+            fi
+          done
+          exit "$status"
 
       - name: Upload release manifest
         timeout-minutes: 10

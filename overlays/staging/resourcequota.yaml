@@ -1,0 +1,28 @@
+# Namespace resource budget for staging (#166).
+#
+# Staging runs the same base manifests as production, so its budget must still
+# cover the peak of a rollout while the backend-migrate Job runs (see
+# overlays/production/resourcequota.yaml for the arithmetic):
+#
+#   pods 6, requests.cpu 450m, limits.cpu 2250m, requests.memory 576Mi,
+#   limits.memory 1920Mi, requests.ephemeral-storage 576Mi,
+#   limits.ephemeral-storage 2816Mi
+#
+# It only adds a small margin on top of that peak, so staging cannot be scaled
+# out without raising the quota. See docs/DEPLOY-KUBERNETES.md
+# "Namespace resource quotas" before changing it.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: compute-budget
+  labels:
+    environment: staging
+spec:
+  hard:
+    pods: "8"
+    requests.cpu: 600m
+    limits.cpu: "3"
+    requests.memory: 768Mi
+    limits.memory: 2560Mi
+    requests.ephemeral-storage: 768Mi
+    limits.ephemeral-storage: 3Gi
