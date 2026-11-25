@@ -237,15 +237,11 @@ cleanup() {
     if [[ "${UPLOAD_STATUS}" == "success" ]]; then
       err_msg="backup failed after successful upload (exit ${exit_code}); retention=${RETENTION_STATUS}"
     fi
+    if [[ -n "${FAILURE_REASON}" ]]; then
+      err_msg="${err_msg} (reason=${FAILURE_REASON})"
+    fi
     emit_metrics "${overall_success}" "$(( end_ts - START_TS ))" \
       "${UPLOADED_SIZE_BYTES}" "$(previous_last_success)" "${err_msg}" || true
-    local reason_msg="backup failed with exit code ${exit_code}"
-    fi
-    if [[ -n "${FAILURE_REASON}" ]]; then
-      reason_msg="${reason_msg} (reason=${FAILURE_REASON})"
-    fi
-    emit_metrics 0 "$(( end_ts - START_TS ))" 0 "$(previous_last_success)" \
-      "${reason_msg}" || true
     error "Backup failed with exit code ${exit_code}"
   fi
   if [[ -n "${LOCK_FD}" ]]; then
