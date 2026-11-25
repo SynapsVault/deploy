@@ -115,6 +115,8 @@ replacements:
           name: synapsvault
         fieldPaths:
           - metadata.labels.ingress-controller-namespace
+        options:
+          create: true
   # Propagate the configured DNS resolver address onto the synapsvault
   # Namespace as a label so the backend and frontend egress NetworkPolicies
   # can select it without hardcoding the kube-dns ClusterIP. Override
@@ -129,3 +131,5 @@ replacements:
           name: synapsvault
         fieldPaths:
           - metadata.labels.dns-resolver-ip
+        options:
+          create: true

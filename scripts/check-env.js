@@ -398,42 +398,27 @@ export function validateEnv(specs, fileEnv, target, options = {}) {
     resolved[spec.name] = value;
     if (isPlaceholder(value)) {
       placeholder.push(spec.name);
-    } else {
-      const allowedProtocols = URL_PROTOCOLS[target][spec.name];
-      if (allowedProtocols) {
-        try {
-          const url = new URL(value);
-          if (!allowedProtocols.includes(url.protocol) || !url.hostname) {
-            invalidUrl.push(spec.name);
-          } else if (strict && url.protocol === 'http:' && !isLocalHost(url.hostname)) {
-            insecureUrl.push(spec.name);
-          }
-        } catch {
       continue;
     }
-
     const allowedProtocols = URL_PROTOCOLS[target][spec.name];
     if (allowedProtocols) {
       try {
         const url = new URL(value);
         if (!allowedProtocols.includes(url.protocol) || !url.hostname) {
           invalidUrl.push(spec.name);
+        } else if (strict && url.protocol === 'http:' && !isLocalHost(url.hostname)) {
+          insecureUrl.push(spec.name);
         }
       } catch {
         invalidUrl.push(spec.name);
       }
     }
-
     if (spec.name === 'STELLAR_NETWORK') {
-      if (!SUPPORTED_NETWORKS.includes(value.trim().toLowerCase())) {
-        invalidNetwork.push(spec.name);
-      }
+      if (!SUPPORTED_NETWORKS.includes(value.trim().toLowerCase())) invalidNetwork.push(spec.name);
+      if (strict && /testnet/i.test(value)) testnet.push(spec.name);
     }
-
     const strKeyKind = STRKEY_FIELDS[spec.name];
-    if (strKeyKind && !isValidStrKey(value, strKeyKind)) {
-      invalidKey.push(spec.name);
-    }
+    if (strKeyKind && !isValidStrKey(value, strKeyKind)) invalidKey.push(spec.name);
   }
 
   // Cross-field check: derive the public key from the secret and compare.
@@ -457,33 +442,12 @@ export function validateEnv(specs, fileEnv, target, options = {}) {
       if (!invalidKey.includes('STELLAR_SECRET_KEY')) {
         invalidKey.push('STELLAR_SECRET_KEY');
       }
-      if (strict && spec.name === 'STELLAR_NETWORK' && /testnet/i.test(value)) {
-        testnet.push(spec.name);
-      }
     }
   }
 
   return {
-    ok:
-      missing.length === 0 &&
-      placeholder.length === 0 &&
-      invalidUrl.length === 0 &&
-      testnet.length === 0 &&
-      insecureUrl.length === 0,
-    missing,
-    placeholder,
-    invalidUrl,
-    testnet,
-    insecureUrl,
-      invalidNetwork.length === 0 &&
-      invalidKey.length === 0 &&
-      keyMismatch.length === 0,
-    missing,
-    placeholder,
-    invalidUrl,
-    invalidNetwork,
-    invalidKey,
-    keyMismatch,
+    ok: [missing, placeholder, invalidUrl, testnet, insecureUrl, invalidNetwork, invalidKey, keyMismatch].every(items => items.length === 0),
+    missing, placeholder, invalidUrl, testnet, insecureUrl, invalidNetwork, invalidKey, keyMismatch,
   };
 }
 
@@ -603,6 +567,13 @@ export function buildJsonResult({ target, strict, ok, duplicates, result }) {
   if (result.insecureUrl.length > 0) {
     errors.push({ code: 'INSECURE_ENDPOINT', variables: result.insecureUrl });
   }
+  for (const [code, variables] of [
+    ['INVALID_NETWORK', result.invalidNetwork],
+    ['INVALID_KEY', result.invalidKey],
+    ['KEY_MISMATCH', result.keyMismatch],
+  ]) {
+    if (variables.length) errors.push({ code, variables });
+  }
   return {
     target,
     strict,
@@ -660,9 +631,7 @@ export function run(argv = process.argv.slice(2), cwd = process.cwd()) {
   const specs = TARGETS[target];
 
   const result = validateEnv(specs, fileEnv, target, { strict });
-  const { ok, missing, placeholder, invalidUrl, testnet, insecureUrl } = result;
-  const { ok, missing, placeholder, invalidUrl, invalidNetwork, invalidKey, keyMismatch } =
-    validateEnv(specs, fileEnv, target);
+  const { ok, missing, placeholder, invalidUrl, testnet, insecureUrl, invalidNetwork, invalidKey, keyMismatch } = result;
 
   const targetLabel = target.toUpperCase();
 
@@ -726,6 +695,10 @@ export function run(argv = process.argv.slice(2), cwd = process.cwd()) {
     console.error(`Testnet configuration rejected in strict mainnet mode:`);
     for (const name of testnet) {
       console.error(`  • ${name} must not identify a testnet`);
+    }
+    console.error('');
+  }
+
   if (invalidNetwork.length > 0) {
     console.error(`Invalid STELLAR_NETWORK values (unsupported network):`);
     for (const name of invalidNetwork) {
@@ -741,6 +714,10 @@ export function run(argv = process.argv.slice(2), cwd = process.cwd()) {
     console.error(`Insecure remote endpoints rejected in strict mainnet mode:`);
     for (const name of insecureUrl) {
       console.error(`  • ${name} must use https:// for non-local hosts`);
+    }
+    console.error('');
+  }
+
   if (invalidKey.length > 0) {
     console.error(`Invalid Stellar key/contract values (bad encoding or checksum):`);
     for (const name of invalidKey) {

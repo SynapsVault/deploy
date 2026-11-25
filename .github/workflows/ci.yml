@@ -156,24 +156,32 @@ jobs:
           # A minimal, fully populated mainnet configuration that must pass
           # --strict. Keep this fixture in sync with the strict rules in
           # scripts/check-env.js and docs/deployment.md.
-          cat > strict.env <<'EOF'
-          NETWORK=mainnet
-          RPC_URL=https://rpc.mainnet.example.com
-          WS_URL=wss://ws.mainnet.example.com
-          API_URL=https://api.mainnet.example.com
-          CONTRACT_ID=CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
-          JWT_SECRET=strict-fixture-jwt-secret-value
-          DATABASE_URL=postgres://user:pass@db.internal:5432/synapsvault
+          read -r public_key secret_key < <(node --input-type=module -e 'import {Keypair} from "@stellar/stellar-sdk"; const k=Keypair.random(); console.log(k.publicKey(), k.secret())')
+          cat > strict.env <<EOF
+          STELLAR_NETWORK=mainnet
+          POSTGRES_USER=fixture_user
+          POSTGRES_PASSWORD=fixture-password
+          POSTGRES_DB=fixture_db
+          SOROBAN_RPC_URL=https://rpc.mainnet.example.com
+          SUPABASE_URL=https://fixture.supabase.co
+          SUPABASE_ANON_KEY=fixture-anon-key
+          SUPABASE_SERVICE_KEY=fixture-service-key
+          ADMIN_API_KEY=fixture-admin-key
+          OPENROUTER_API_KEY=fixture-openrouter-key
+          STELLAR_PUBLIC_KEY=${public_key}
+          STELLAR_SECRET_KEY=${secret_key}
+          AGENT_SECRET_KEY=${secret_key}
+          REGISTRY_SECRET_KEY=${secret_key}
           EOF
           node scripts/check-env.js --target compose --env-file strict.env --strict
           # Strict mode must reject testnet configuration.
-          sed 's/^NETWORK=mainnet$/NETWORK=testnet/' strict.env > strict-testnet.env
+          sed 's/^STELLAR_NETWORK=mainnet$/STELLAR_NETWORK=testnet/' strict.env > strict-testnet.env
           if node scripts/check-env.js --target compose --env-file strict-testnet.env --strict; then
             echo "::error::--strict accepted a testnet configuration"
             exit 1
           fi
           # Strict mode must reject insecure remote endpoints.
-          sed 's#^RPC_URL=.*#RPC_URL=http://rpc.mainnet.example.com#' strict.env > strict-insecure.env
+          sed 's#^SOROBAN_RPC_URL=.*#SOROBAN_RPC_URL=http://rpc.mainnet.example.com#' strict.env > strict-insecure.env
           if node scripts/check-env.js --target compose --env-file strict-insecure.env --strict; then
             echo "::error::--strict accepted an insecure remote endpoint"
             exit 1
@@ -206,9 +214,7 @@ jobs:
           trap 'rm -rf "${work_dir}"' EXIT
 
           # Generate a valid Stellar keypair for the positive cases.
-          keypair="$(node scripts/01-generate-keypairs.js)"
-          public_key="$(printf '%s\n' "${keypair}" | sed -n 's/^Public [Kk]ey: *//p' | head -n1)"
-          secret_key="$(printf '%s\n' "${keypair}" | sed -n 's/^Secret [Kk]ey: *//p' | head -n1)"
+          read -r public_key secret_key < <(node --input-type=module -e 'import {Keypair} from "@stellar/stellar-sdk"; const k=Keypair.random(); console.log(k.publicKey(), k.secret())')
           if [ -z "${public_key}" ] || [ -z "${secret_key}" ]; then
             echo "::error::Could not parse generated keypair"
             exit 1
@@ -220,8 +226,19 @@ jobs:
           base_env() {
             cat <<EOF
           STELLAR_NETWORK=testnet
+          POSTGRES_USER=fixture_user
+          POSTGRES_PASSWORD=fixture-password
+          POSTGRES_DB=fixture_db
+          SOROBAN_RPC_URL=https://rpc.mainnet.example.com
+          SUPABASE_URL=https://fixture.supabase.co
+          SUPABASE_ANON_KEY=fixture-anon-key
+          SUPABASE_SERVICE_KEY=fixture-service-key
+          ADMIN_API_KEY=fixture-admin-key
+          OPENROUTER_API_KEY=fixture-openrouter-key
           STELLAR_PUBLIC_KEY=${public_key}
           STELLAR_SECRET_KEY=${secret_key}
+          AGENT_SECRET_KEY=${secret_key}
+          REGISTRY_SECRET_KEY=${secret_key}
           STELLAR_CONTRACT_ID=${contract_id}
           EOF
           }
@@ -273,8 +290,7 @@ jobs:
           expect_fail "bad contract checksum" "${work_dir}/bad-contract.env" 'STELLAR_CONTRACT_ID'
 
           # Negative: public key does not match the secret key.
-          other_keypair="$(node scripts/01-generate-keypairs.js)"
-          other_public="$(printf '%s\n' "${other_keypair}" | sed -n 's/^Public [Kk]ey: *//p' | head -n1)"
+          other_public="$(node --input-type=module -e 'import {Keypair} from "@stellar/stellar-sdk"; console.log(Keypair.random().publicKey())')"
           base_env | sed "s/^STELLAR_PUBLIC_KEY=.*/STELLAR_PUBLIC_KEY=${other_public}/" > "${work_dir}/mismatch.env"
           expect_fail "keypair mismatch" "${work_dir}/mismatch.env" 'STELLAR_(PUBLIC|SECRET)_KEY'
 

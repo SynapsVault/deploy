@@ -237,15 +237,11 @@ cleanup() {
     if [[ "${UPLOAD_STATUS}" == "success" ]]; then
       err_msg="backup failed after successful upload (exit ${exit_code}); retention=${RETENTION_STATUS}"
     fi
+    if [[ -n "${FAILURE_REASON}" ]]; then
+      err_msg="${err_msg} (reason=${FAILURE_REASON})"
+    fi
     emit_metrics "${overall_success}" "$(( end_ts - START_TS ))" \
       "${UPLOADED_SIZE_BYTES}" "$(previous_last_success)" "${err_msg}" || true
-    local reason_msg="backup failed with exit code ${exit_code}"
-    fi
-    if [[ -n "${FAILURE_REASON}" ]]; then
-      reason_msg="${reason_msg} (reason=${FAILURE_REASON})"
-    fi
-    emit_metrics 0 "$(( end_ts - START_TS ))" 0 "$(previous_last_success)" \
-      "${reason_msg}" || true
     error "Backup failed with exit code ${exit_code}"
   fi
   if [[ -n "${LOCK_FD}" ]]; then
@@ -546,6 +542,7 @@ emit_metrics() {
       local ret_escaped
       ret_escaped="$(printf '%s' "${RETENTION_ERROR}" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\n/ /g')"
       printf 'soroban_backup_retention_error_info{message="%s"} 1\n' "${ret_escaped}"
+    fi
     if [[ -n "${FAILURE_REASON}" ]]; then
       printf '# HELP soroban_backup_failure_reason Whether the last run failed for a specific reason (1=yes).\n'
       printf '# TYPE soroban_backup_failure_reason gauge\n'
