@@ -542,6 +542,7 @@ emit_metrics() {
       local ret_escaped
       ret_escaped="$(printf '%s' "${RETENTION_ERROR}" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\n/ /g')"
       printf 'soroban_backup_retention_error_info{message="%s"} 1\n' "${ret_escaped}"
+    fi
     if [[ -n "${FAILURE_REASON}" ]]; then
       printf '# HELP soroban_backup_failure_reason Whether the last run failed for a specific reason (1=yes).\n'
       printf '# TYPE soroban_backup_failure_reason gauge\n'
