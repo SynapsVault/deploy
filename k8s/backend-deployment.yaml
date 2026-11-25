@@ -21,6 +21,8 @@ spec:
         # triggers a rollout while keeping selectors immutable.
         checksum/backend-config: "0000000000000000000000000000000000000000000000000000000000000000"
     spec:
+      serviceAccountName: backend
+      automountServiceAccountToken: false
       # Optional: set imagePullSecrets in kustomization.yaml (patches) to pull
       # from a private registry. Omit for public registries.
       imagePullSecrets:
@@ -58,9 +60,11 @@ spec:
           type: RuntimeDefault
       containers:
         - name: backend
-          image: taskapp-backend:latest
+          image: backend
           ports:
-            - containerPort: 8080
+            - name: http
+              containerPort: 3000
+              protocol: TCP
           securityContext:
             allowPrivilegeEscalation: false
             privileged: false
@@ -84,6 +88,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: backend-config
+            - secretRef:
+                name: backend-secret
           volumeMounts:
             - name: tmp
               mountPath: /tmp
