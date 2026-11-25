@@ -13,6 +13,13 @@ spec:
     metadata:
       labels:
         app: backend
+      annotations:
+        # #163: Roll pods when backend-config changes so envFrom updates take
+        # effect without an image change. The deploy-k8s workflow patches this
+        # annotation to the SHA-256 of k8s/configmap.yaml before applying, so
+        # any change to a runtime config value produces a new pod template and
+        # triggers a rollout while keeping selectors immutable.
+        checksum/backend-config: "0000000000000000000000000000000000000000000000000000000000000000"
     spec:
       # Optional: set imagePullSecrets in kustomization.yaml (patches) to pull
       # from a private registry. Omit for public registries.
@@ -74,6 +81,9 @@ spec:
               # Caps total ephemeral storage (emptyDir + container writable layer).
               # Must be >= sum of emptyDir sizeLimits below (256Mi + 64Mi).
               ephemeral-storage: 512Mi
+          envFrom:
+            - configMapRef:
+                name: backend-config
           volumeMounts:
             - name: tmp
               mountPath: /tmp

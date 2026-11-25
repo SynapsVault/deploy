@@ -351,9 +351,88 @@ jobs:
           KUSTOMIZE_DIR: ${{ steps.target.outputs.kustomize_dir }}
         run: bash scripts/verify-image-attestations.sh "$KUSTOMIZE_DIR"
 
+      # #161: The base includes ServiceMonitor and PrometheusRule resources
+      # (monitoring.coreos.com/v1). kubectl apply silently succeeds on the
+      # YAML parse but those resources are never reconciled when the Prometheus
+      # Operator CRDs are absent. Fail here with installation guidance before
+      # any application resource is changed.
+      - name: Check monitoring CRDs are installed
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          MISSING=()
+          for crd in servicemonitors.monitoring.coreos.com prometheusrules.monitoring.coreos.com; do
+            if ! kubectl get crd "${crd}" > /dev/null 2>&1; then
+              MISSING+=("${crd}")
+            fi
+          done
+          if [ ${#MISSING[@]} -gt 0 ]; then
+            echo "::error::Required monitoring CRDs are not installed:"
+            for crd in "${MISSING[@]}"; do
+              echo "::error::  - ${crd}"
+            done
+            echo "::error::Install the Prometheus Operator first, e.g.:"
+            echo "::error::  helm repo add prometheus-community https://prometheus-community.github.io/helm-charts"
+            echo "::error::  helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack --namespace monitoring --create-namespace"
+            echo "::error::See docs/DEPLOY-KUBERNETES.md for the full guide."
+            exit 1
+          fi
+          echo "Monitoring CRDs present: servicemonitors.monitoring.coreos.com, prometheusrules.monitoring.coreos.com"
+      - name: Stamp config checksum into backend Deployment
+        timeout-minutes: 10
+        # #163: Roll backend pods when backend-config changes so envFrom
+        # updates take effect without an image change. Computes a SHA-256 of
+        # the rendered ConfigMap data (post-substitution) and injects it as a
+        # pod-template annotation via a strategic-merge patch. Any change to a
+        # runtime config value produces a new hash → new pod template → rollout,
+        # while keeping the selectors (matchLabels) immutable.
+        env:
+          KUSTOMIZE_DIR: ${{ steps.target.outputs.kustomize_dir }}
+          NAMESPACE: ${{ steps.target.outputs.namespace }}
+        run: |
+          set -euo pipefail
+          CONFIG_HASH=$(kubectl kustomize "$KUSTOMIZE_DIR" \
+            | yq -N 'select(.kind == "ConfigMap" and .metadata.name == "backend-config") | .data' \
+            | sha256sum | awk '{print $1}')
+          if ! [[ "$CONFIG_HASH" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Could not compute a valid SHA-256 for backend-config"
+            exit 1
+          fi
+          echo "backend-config checksum: ${CONFIG_HASH}"
+          cat > /tmp/backend-checksum-patch.yaml <<PATCH
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: backend
+            namespace: ${NAMESPACE}
+          spec:
+            template:
+              metadata:
+                annotations:
+                  checksum/backend-config: "${CONFIG_HASH}"
+          PATCH
+          kubectl apply -k "$KUSTOMIZE_DIR" --dry-run=client \
+            --patch /tmp/backend-checksum-patch.yaml > /dev/null
+          echo "CONFIG_HASH=${CONFIG_HASH}" >> "$GITHUB_ENV"
+
       - name: Apply manifests
         timeout-minutes: 10
-        run: kubectl apply -k "${{ steps.target.outputs.kustomize_dir }}"
+        env:
+          NAMESPACE: ${{ steps.target.outputs.namespace }}
+          CONFIG_HASH: ${{ env.CONFIG_HASH }}
+        run: |
+          set -euo pipefail
+          KUSTOMIZE_DIR="${{ steps.target.outputs.kustomize_dir }}"
+          # Apply the base manifests first.
+          kubectl apply -k "$KUSTOMIZE_DIR"
+          # Patch the config checksum annotation so a ConfigMap change alone
+          # triggers a rollout even when the image tag is unchanged.
+          if [ -n "${CONFIG_HASH:-}" ]; then
+            kubectl patch deployment backend \
+              -n "$NAMESPACE" \
+              --type=merge \
+              -p "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"checksum/backend-config\":\"${CONFIG_HASH}\"}}}}}"
+          fi
 
       - name: Wait for rollouts
         timeout-minutes: 10
@@ -522,6 +601,40 @@ jobs:
             --image=busybox:1.36 --timeout=120s \
             --overrides='{"spec":{"dnsConfig":{"nameservers":["'"$NODELOCAL_IP"'"]}}}' \
             -- nslookup kubernetes.default.svc.cluster.local
+
+      # #160: publish a human-readable deployment summary to the Actions job
+      # summary so reviewers can see environment, sources, digests and links
+      # without opening logs, and without exposing credentials.
+      - name: Publish deployment summary
+        if: success()
+        env:
+          DEPLOY_ENV: ${{ env.DEPLOY_ENV }}
+          BACKEND_SHA: ${{ steps.revisions.outputs.backend }}
+          FRONTEND_SHA: ${{ steps.revisions.outputs.frontend }}
+          DEPLOY_SHA: ${{ steps.revisions.outputs.deploy }}
+          BACKEND_REF: ${{ steps.refs.outputs.backend }}
+          FRONTEND_REF: ${{ steps.refs.outputs.frontend }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
+          TARGET_URL: https://${{ steps.target.outputs.namespace }}.example.com
+        run: |
+          set -euo pipefail
+          BACKEND_IMAGE=$(jq -r '.images.backend' release-manifest.json 2>/dev/null
+          BACKEND_IMAGE=${BACKEND_IMAGE:-unknown}
+          FRONTEND_IMAGE=$(jq -r '.images.frontend' release-manifest.json 2>/dev/null
+          FRONTEND_IMAGE=${FRONTEND_IMAGE:-unknown}
+          cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          ## Deployment summary
+          SUMMARY
+          printf '| Field | Value |\n|---|---|\n' >> "$GITHUB_STEP_SUMMARY"
+          printf '| **Environment** | %s |\n' "${DEPLOY_ENV}" >> "$GITHUB_STEP_SUMMARY"
+          printf '| **Workflow run** | [link](%s) |\n' "${RUN_URL}" >> "$GITHUB_STEP_SUMMARY"
+          printf '\n### Source revisions\n\n| Repo | Ref | SHA |\n|---|---|---|\n' >> "$GITHUB_STEP_SUMMARY"
+          printf '| SynapsVault/deploy | main | \%s\ |\n' "${DEPLOY_SHA}" >> "$GITHUB_STEP_SUMMARY"
+          printf '| SynapsVault/backend | \%s\ | \%s\ |\n' "${BACKEND_REF}" "${BACKEND_SHA}" >> "$GITHUB_STEP_SUMMARY"
+          printf '| SynapsVault/frontend | \%s\ | \%s\ |\n' "${FRONTEND_REF}" "${FRONTEND_SHA}" >> "$GITHUB_STEP_SUMMARY"
+          printf '\n### Image digests\n\n| Image | Digest |\n|---|---|\n' >> "$GITHUB_STEP_SUMMARY"
+          printf '| backend | \%s\ |\n' "${BACKEND_IMAGE}" >> "$GITHUB_STEP_SUMMARY"
+          printf '| frontend | \%s\ |\n' "${FRONTEND_IMAGE}" >> "$GITHUB_STEP_SUMMARY"
 
       # #159: always collect diagnostics on failure, sanitized before upload.
       - name: Collect failure diagnostics
